@@ -1,0 +1,26 @@
+{
+    "profiles": {
+        "profile_avatar": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&q=80",
+        "profile_avatar_2": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80"
+    },
+    "vehicles": {
+        "m3_front": "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=800&q=80",
+        "m3_side": "https://images.unsplash.com/photo-1555652736-e92021d28a10?w=800&q=80",
+        "m3_rear": "https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?w=800&q=80",
+        "gt3_front": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&q=80",
+        "gt3_side": "https://images.unsplash.com/photo-1611859266238-4b98091d9d9b?w=800&q=80",
+        "panigale_front": "https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=800&q=80",
+        "panigale_side": "https://images.unsplash.com/photo-1599819811279-d5ad9cccf838?w=800&q=80"
+    },
+    "meets": {
+        "cars_coffee_cover": "https://images.unsplash.com/photo-1503736334956-4c8f8e92946d?w=800&q=80",
+        "cars_coffee_1": "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=800&q=80",
+        "cars_coffee_2": "https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&q=80",
+        "bike_meet_cover": "https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800&q=80",
+        "bike_meet_1": "https://images.unsplash.com/photo-1558981359-219d6364c9c8?w=800&q=80",
+        "bike_meet_2": "https://images.unsplash.com/photo-1558981852-426c6c22a060?w=800&q=80",
+        "classic_show_cover": "https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800&q=80",
+        "classic_show_1": "https://images.unsplash.com/photo-1584345604476-8ec5e12e42dd?w=800&q=80",
+        "classic_show_2": "https://images.unsplash.com/photo-1591293835940-934a7c4f2d9b?w=800&q=80"
+    }
+} 
