@@ -1,0 +1,581 @@
+import Foundation
+import Supabase
+import UIKit
+
+// Import models directly
+import struct V2.Meetup
+import struct V2.MeetupParticipant
+import struct V2.ChatMessage
+import struct V2.Vehicle
+import struct V2.User
+import struct V2.Profile
+import struct V2.Meet
+import struct V2.MeetComment
+
+// Remove problematic @_exported imports that cause ambiguity
+// and use string-based type parameters instead of enum references
+
+enum SupabaseError: Error {
+    case userNotFound
+    case failedToCreateUser
+    case failedToGetUser
+    case failedToUpdateUser
+    case failedToGetMeets
+    case failedToCreateMeet
+    case failedToGetComments
+    case failedToCreateComment
+    case imageConversionFailed
+    case imageUploadFailed
+    case notAuthenticated
+}
+
+@MainActor
+class SupabaseService {
+    static let shared = SupabaseService()
+    
+    let client: SupabaseClient
+    
+    private init() {
+        // Initialize Supabase client with your project URL and anon key
+        client = SupabaseClient(
+            supabaseURL: URL(string: "YOUR_SUPABASE_URL")!,
+            supabaseKey: "YOUR_SUPABASE_ANON_KEY"
+        )
+    }
+    
+    // MARK: - Authentication
+    func signUp(email: String, password: String) async throws -> AuthResponse {
+        return try await client.auth.signUp(
+            email: email,
+            password: password
+        )
+    }
+    
+    func signIn(email: String, password: String) async throws -> AuthResponse {
+        return try await client.auth.signIn(
+            email: email,
+            password: password
+        )
+    }
+    
+    func signOut() async throws {
+        try await client.auth.signOut()
+    }
+    
+    // MARK: - Profile
+    func fetchProfile() async throws -> Profile {
+        let session = try await client.auth.session
+        if session.user == nil {
+            throw SupabaseError.notAuthenticated
+        }
+        
+        let query = client
+            .from("profiles")
+            .select()
+            .eq("id", value: session.user.id)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    func updateProfile(_ profile: Profile) async throws -> Profile {
+        let query = client
+            .from("profiles")
+            .update(profile)
+            .eq("id", value: profile.id)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    // MARK: - Vehicles
+    func fetchVehicles(for userId: UUID? = nil) async throws -> [Vehicle] {
+        var query = client
+            .from("vehicles")
+            .select()
+        
+        if let userId = userId {
+            query = query.eq("user_id", value: userId)
+        }
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    func addVehicle(_ vehicle: Vehicle) async throws -> Vehicle {
+        let query = client
+            .from("vehicles")
+            .insert(vehicle)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    // MARK: - Meetups
+    func fetchMeetups(
+        status: String? = nil,
+        vehicleType: String? = nil,
+        routeType: String? = nil,
+        nearLatitude: Double? = nil,
+        nearLongitude: Double? = nil,
+        radius: Double = 50 // km
+    ) async throws -> [Meetup] {
+        var query = client
+            .from("meetups")
+            .select("""
+                *,
+                organizer:profiles(*),
+                participants:meetup_participants(
+                    user:profiles(*),
+                    vehicle:vehicles(*)
+                )
+            """)
+        
+        if let status = status {
+            query = query.eq("status", value: status)
+        }
+        
+        if let vehicleType = vehicleType {
+            query = query.eq("vehicle_type", value: vehicleType)
+        }
+        
+        if let routeType = routeType {
+            query = query.eq("route_type", value: routeType)
+        }
+        
+        if let lat = nearLatitude, let lon = nearLongitude {
+            // Using a simple filter expression for distance
+            query = query.filter(column: "earth_distance(ll_to_earth(latitude, longitude), ll_to_earth(\(lat), \(lon)))", operator: .lt, value: radius * 1000)
+        }
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    func createMeetup(_ meetup: Meetup) async throws -> Meetup {
+        let query = client
+            .from("meetups")
+            .insert(meetup)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    func joinMeetup(
+        meetupId: UUID,
+        userId: UUID,
+        vehicleId: UUID
+    ) async throws -> MeetupParticipant {
+        let participant = MeetupParticipant(
+            meetupId: meetupId,
+            userId: userId,
+            vehicleId: vehicleId,
+            joinedAt: Date()
+        )
+        
+        let query = client
+            .from("meetup_participants")
+            .insert(participant)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    // MARK: - Chat
+    func fetchMessages(for meetupId: UUID) async throws -> [ChatMessage] {
+        let query = client
+            .from("chat_messages")
+            .select("""
+                *,
+                user:profiles(*)
+            """)
+            .eq("meetup_id", value: meetupId)
+            .order("created_at")
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    func sendMessage(_ message: ChatMessage) async throws -> ChatMessage {
+        let query = client
+            .from("chat_messages")
+            .insert(message)
+            .single()
+        
+        let result = try await query.execute()
+        return result.value
+    }
+    
+    // MARK: - Real-time subscriptions
+    func subscribeToChatMessages(
+        meetupId: UUID,
+        onMessage: @escaping (ChatMessage) -> Void
+    ) -> RealtimeChannel {
+        let channel = client.realtime
+            .channel("chat:\(meetupId.uuidString)")
+        
+        channel.on(
+            "INSERT", 
+            filter: ChannelFilter(
+                event: "INSERT",
+                schema: "public",
+                table: "chat_messages"
+            )
+        ) { message in
+            guard 
+                let messageData = message.payload["new"],
+                let messageJSON = try? JSONSerialization.data(withJSONObject: messageData),
+                let chatMessage = try? JSONDecoder().decode(ChatMessage.self, from: messageJSON)
+            else {
+                return
+            }
+            onMessage(chatMessage)
+        }
+        
+        try? channel.subscribe()
+        return channel
+    }
+    
+    func subscribeToMeetupChanges(
+        onUpdate: @escaping (Meetup) -> Void
+    ) -> RealtimeChannel {
+        let channel = client.realtime
+            .channel("meetups")
+        
+        channel.on(
+            "UPDATE", 
+            filter: ChannelFilter(
+                event: "UPDATE",
+                schema: "public",
+                table: "meetups"
+            )
+        ) { message in
+            guard 
+                let meetupData = message.payload["new"],
+                let meetupJSON = try? JSONSerialization.data(withJSONObject: meetupData),
+                let meetup = try? JSONDecoder().decode(Meetup.self, from: meetupJSON)
+            else {
+                return
+            }
+            onUpdate(meetup)
+        }
+        
+        try? channel.subscribe()
+        return channel
+    }
+    
+    // MARK: - Meets
+    
+    func fetchMeets() async throws -> [Meet] {
+        let meets: [Meet] = try await client
+            .from("meets")
+            .select()
+            .order("date", ascending: true)
+            .execute()
+            .value
+        
+        return meets
+    }
+    
+    func createMeet(_ meet: Meet) async throws -> Meet {
+        let newMeet: Meet = try await client
+            .from("meets")
+            .insert(meet)
+            .select()
+            .single()
+            .execute()
+            .value
+        
+        return newMeet
+    }
+    
+    func updateMeet(_ meet: Meet) async throws -> Meet {
+        let updatedMeet: Meet = try await client
+            .from("meets")
+            .update(meet)
+            .eq("id", value: meet.id)
+            .select()
+            .single()
+            .execute()
+            .value
+        
+        return updatedMeet
+    }
+    
+    func deleteMeet(_ meet: Meet) async throws {
+        try await client
+            .from("meets")
+            .delete()
+            .eq("id", value: meet.id)
+            .execute()
+    }
+    
+    // MARK: - Meet Attendance
+    
+    func attendMeet(_ meetId: String) async throws {
+        guard let userId = try await getCurrentUser()?.id.uuidString else { 
+            throw SupabaseError.notAuthenticated 
+        }
+        
+        try await client
+            .from("meet_attendees")
+            .insert(["meet_id": meetId, "user_id": userId])
+            .execute()
+    }
+    
+    func leaveMeet(_ meetId: String) async throws {
+        guard let userId = try await getCurrentUser()?.id.uuidString else { 
+            throw SupabaseError.notAuthenticated 
+        }
+        
+        try await client
+            .from("meet_attendees")
+            .delete()
+            .eq("meet_id", value: meetId)
+            .eq("user_id", value: userId)
+            .execute()
+    }
+    
+    func isAttending(_ meetId: String) async throws -> Bool {
+        guard let userId = try await getCurrentUser()?.id.uuidString else { 
+            throw SupabaseError.notAuthenticated 
+        }
+        
+        let attendees: [MeetAttendee] = try await client
+            .from("meet_attendees")
+            .select()
+            .eq("meet_id", value: meetId)
+            .eq("user_id", value: userId)
+            .execute()
+            .value
+        
+        return !attendees.isEmpty
+    }
+    
+    // MARK: - Comments
+    
+    func addComment(_ comment: MeetComment) async throws -> MeetComment {
+        let newComment: MeetComment = try await client
+            .from("meet_comments")
+            .insert(comment)
+            .select()
+            .single()
+            .execute()
+            .value
+        
+        return newComment
+    }
+    
+    func deleteComment(_ commentId: String) async throws {
+        try await client
+            .from("meet_comments")
+            .delete()
+            .eq("id", value: commentId)
+            .execute()
+    }
+    
+    func likeComment(_ commentId: String) async throws {
+        guard let userId = try await getCurrentUser()?.id.uuidString else { 
+            throw SupabaseError.notAuthenticated 
+        }
+        
+        try await client
+            .from("comment_likes")
+            .insert(["comment_id": commentId, "user_id": userId])
+            .execute()
+    }
+    
+    func unlikeComment(_ commentId: String) async throws {
+        guard let userId = try await getCurrentUser()?.id.uuidString else { 
+            throw SupabaseError.notAuthenticated 
+        }
+        
+        try await client
+            .from("comment_likes")
+            .delete()
+            .eq("comment_id", value: commentId)
+            .eq("user_id", value: userId)
+            .execute()
+    }
+    
+    // MARK: - Real-time Subscriptions
+    
+    func subscribeToMeets(completion: @escaping (Meet) -> Void) -> RealtimeChannel {
+        // Create a channel for meets
+        let channel = client.realtime.channel("public:meets")
+        
+        channel.on(
+            "INSERT", 
+            filter: ChannelFilter(
+                event: "INSERT",
+                schema: "public",
+                table: "meets"
+            )
+        ) { message in
+            guard 
+                let meetData = message.payload["new"],
+                let meetJSON = try? JSONSerialization.data(withJSONObject: meetData),
+                let meet = try? JSONDecoder().decode(Meet.self, from: meetJSON)
+            else {
+                return
+            }
+            
+            // Dispatch to main thread for UI updates
+            Task { @MainActor in
+                completion(meet)
+            }
+        }
+        
+        // Subscribe to the channel
+        try? channel.subscribe()
+        
+        return channel
+    }
+    
+    func subscribeToComments(for meetId: String, completion: @escaping (MeetComment) -> Void) -> RealtimeChannel {
+        // Create a channel for comments
+        let channel = client.realtime.channel("public:meet_comments")
+        
+        channel.on(
+            "INSERT", 
+            filter: ChannelFilter(
+                event: "INSERT",
+                schema: "public", 
+                table: "meet_comments"
+            )
+        ) { message in
+            guard 
+                let commentData = message.payload["new"],
+                let commentJSON = try? JSONSerialization.data(withJSONObject: commentData),
+                let comment = try? JSONDecoder().decode(MeetComment.self, from: commentJSON),
+                comment.meetId == meetId
+            else {
+                return
+            }
+            
+            // Dispatch to main thread for UI updates
+            Task { @MainActor in
+                completion(comment)
+            }
+        }
+        
+        // Subscribe to the channel
+        try? channel.subscribe()
+        
+        return channel
+    }
+    
+    // Helper method to fetch a meet with its comments
+    private func fetchMeetWithComments(meetId: String) async throws -> Meet {
+        let meet: Meet = try await client
+            .from("meets")
+            .select()
+            .eq("id", value: meetId)
+            .single()
+            .execute()
+            .value
+        
+        return meet
+    }
+    
+    // MARK: - Helper Methods
+    
+    func getCurrentUser() async throws -> Auth.User? {
+        let session = try await client.auth.session
+        return session.user
+    }
+    
+    func getCurrentUserId() async throws -> UUID? {
+        guard let user = try await getCurrentUser() else {
+            return nil
+        }
+        return user.id
+    }
+    
+    // Upload an image to Supabase storage and return the public URL
+    func uploadImage(_ image: UIImage, path: String) async throws -> String {
+        // First verify we have an active session
+        do {
+            _ = try await client.auth.session
+        } catch {
+            print("Authentication error during image upload: \(error)")
+            throw SupabaseError.notAuthenticated
+        }
+        
+        // Convert UIImage to Data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw SupabaseError.imageConversionFailed
+        }
+        
+        // Generate a unique filename
+        let filename = "\(UUID().uuidString).jpg"
+        let filePath = "\(path)/\(filename)"
+        
+        do {
+            // Upload the image to Supabase storage
+            _ = try await client.storage
+                .from("meet-images")
+                .upload(
+                    filePath,
+                    data: imageData,
+                    options: .init(contentType: "image/jpeg", upsert: true)
+                )
+            
+            // Get the public URL from the upload result
+            let publicURL = try await client.storage
+                .from("meet-images")
+                .createSignedURL(path: filePath, expiresIn: 3600 * 24 * 365) // 1 year expiry
+            
+            return publicURL.absoluteString
+        } catch let error as StorageError {
+            print("Storage error during image upload: \(error)")
+            // Check for authentication-related errors
+            if error.localizedDescription.contains("authentication") || 
+               error.localizedDescription.contains("auth") || 
+               error.localizedDescription.contains("token") || 
+               error.localizedDescription.contains("permission") {
+                throw SupabaseError.notAuthenticated
+            }
+            throw SupabaseError.imageUploadFailed
+        } catch {
+            print("Unexpected error during image upload: \(error)")
+            throw SupabaseError.imageUploadFailed
+        }
+    }
+    
+    // MARK: - Friend Requests
+    
+    func sendFriendRequest(to email: String) async throws {
+        let friendService = FriendRequestService(supabaseService: self)
+        try await friendService.sendFriendRequest(to: email)
+    }
+    
+    func acceptFriendRequest(from userId: String) async throws {
+        let friendService = FriendRequestService(supabaseService: self)
+        try await friendService.acceptFriendRequest(from: userId)
+    }
+    
+    func rejectFriendRequest(from userId: String) async throws {
+        let friendService = FriendRequestService(supabaseService: self)
+        try await friendService.rejectFriendRequest(from: userId)
+    }
+}
+
+// MARK: - Models
+
+struct MeetAttendee: Codable {
+    let meetId: String
+    let userId: String
+    let createdAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case meetId = "meet_id"
+        case userId = "user_id"
+        case createdAt = "created_at"
+    }
+} 

@@ -15,6 +15,16 @@ struct Route: Identifiable, Codable {
     let createdAt: Date?
     var updatedAt: Date?
     
+    // Computed property to get the difficulty string
+    var difficultyString: String {
+        return difficulty.description
+    }
+    
+    // Computed property to return creator ID as string (to be replaced with actual creator name in future)
+    var creator: String {
+        return creatorId
+    }
+    
     enum CodingKeys: String, CodingKey {
         case id
         case meetId = "meet_id"

@@ -104,6 +104,75 @@ struct MeetDetailView: View {
                     .padding()
                 }
                 
+                // Status section
+                VStack {
+                    HStack {
+                        Text("Event Status")
+                            .font(.headline)
+                        
+                        Spacer()
+                        
+                        AnimatedStatusBadge(status: meet.status)
+                    }
+                    .padding(.horizontal)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(meet.status.description)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        if meet.status == .upcoming {
+                            Text("This meet will start on \(meet.date.formatted(date: .long, time: .shortened))")
+                                .font(.subheadline)
+                        } else if meet.status == .active {
+                            Text("This meet started on \(meet.date.formatted(date: .long, time: .shortened)) and is currently active")
+                                .font(.subheadline)
+                        } else if meet.status == .completed {
+                            Text("This meet took place on \(meet.date.formatted(date: .long, time: .shortened))")
+                                .font(.subheadline)
+                        } else if meet.status == .canceled {
+                            Text("This meet was scheduled for \(meet.date.formatted(date: .long, time: .shortened))")
+                                .font(.subheadline)
+                        }
+                        
+                        // If user is creator, show status management controls
+                        if meet.creatorId == viewModel.currentUser?.id {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Divider()
+                                
+                                Text("Manage Status")
+                                    .font(.subheadline.bold())
+                                
+                                HStack {
+                                    ForEach(MeetStatus.allCases) { status in
+                                        if status != meet.status {
+                                            Button {
+                                                Task {
+                                                    try? await viewModel.updateMeetStatus(meetId: meet.id, status: status)
+                                                }
+                                            } label: {
+                                                Text(status.displayName)
+                                                    .font(.caption)
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 5)
+                                                    .background(status.color.opacity(0.2))
+                                                    .foregroundColor(status.color)
+                                                    .cornerRadius(8)
+                                            }
+                                            .buttonStyle(PlainButtonStyle())
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
+                    }
+                    .padding()
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
+                    .padding(.horizontal)
+                }
+                
                 // Meet details
                 VStack(alignment: .leading, spacing: 16) {
                     Text(meet.title)
@@ -177,7 +246,7 @@ struct MeetDetailView: View {
                     Text(meet.description)
                         .padding(.horizontal)
                     
-                    if meet.status == .ongoing {
+                    if meet.status == .active {
                         Button {
                             // TODO: Implement check-in functionality
                         } label: {
@@ -223,17 +292,18 @@ struct MeetDetailView: View {
                         showingJoinSheet = true
                     } label: {
                         HStack {
-                            Spacer()
+                            Image(systemName: "person.crop.circle.badge.plus")
                             Text("Join Meet")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.accentColor)
-                                .cornerRadius(10)
-                            Spacer()
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(meet.status.allowsInteraction ? DesignSystem.Colors.accentGradient : LinearGradient(colors: [.gray], startPoint: .leading, endPoint: .trailing))
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
                     }
-                    .padding()
+                    .disabled(!meet.status.allowsInteraction)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
                     .sheet(isPresented: $showingJoinSheet) {
                         JoinMeetView(meet: meet, viewModel: viewModel)
                     }
@@ -263,33 +333,6 @@ struct MeetDetailView: View {
                     routeViewModel.selectedRoute = primaryRoute
                 }
             }
-        }
-    }
-}
-
-struct StatusBadge: View {
-    let status: MeetStatus
-    
-    var body: some View {
-        Text(status.rawValue.capitalized)
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(backgroundColor)
-            .foregroundColor(.white)
-            .cornerRadius(8)
-    }
-    
-    var backgroundColor: Color {
-        switch status {
-        case .upcoming:
-            return .blue
-        case .ongoing:
-            return .green
-        case .completed:
-            return .gray
-        case .cancelled:
-            return .red
         }
     }
 }

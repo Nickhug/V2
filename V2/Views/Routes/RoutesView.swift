@@ -3,7 +3,6 @@ import SwiftUI
 struct RoutesView: View {
     @EnvironmentObject private var routeViewModel: RouteViewModel
     @State private var showingRouteEditor = false
-    @State private var searchText = ""
     @State private var filterDifficulty: RouteDifficulty? = nil
     
     var body: some View {
@@ -14,11 +13,13 @@ struct RoutesView: View {
                 VStack {
                     // Search and filter bar
                     HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Search routes", text: $searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        SearchBar(
+                            text: $routeViewModel.searchQuery,
+                            placeholder: "Search routes",
+                            onTextChange: { _ in 
+                                // The RouteViewModel handles filtering with computed properties
+                            }
+                        )
                         
                         Menu(content: {
                             Button("All Difficulties") {
@@ -34,14 +35,51 @@ struct RoutesView: View {
                             }
                         }, label: {
                             Image(systemName: "line.3.horizontal.decrease.circle")
-                                .foregroundColor(.accentColor)
+                                .font(.system(size: 18))
+                                .foregroundColor(MeetSpotColors.pink500)
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    Circle()
+                                        .fill(Material.ultraThinMaterial)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        )
+                                )
                         })
                     }
                     .padding(.horizontal)
+                    .padding(.vertical, 8)
                     
-                    // Routes list
-                    RoutesListView(editable: true)
-                        .environmentObject(routeViewModel)
+                    if filteredRoutes().isEmpty {
+                        VStack(spacing: 20) {
+                            Spacer()
+                            Image(systemName: "map.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.white.opacity(0.7))
+                            
+                            Text("No routes found")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                            
+                            if !routeViewModel.searchQuery.isEmpty {
+                                Text("Try a different search term")
+                                    .font(.subheadline)
+                                    .foregroundColor(.white.opacity(0.7))
+                            } else if filterDifficulty != nil {
+                                Text("Try a different difficulty filter")
+                                    .font(.subheadline)
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                            Spacer()
+                        }
+                        .padding()
+                    } else {
+                        // Routes list
+                        RoutesListView(routes: filteredRoutes(), editable: true)
+                            .environmentObject(routeViewModel)
+                    }
                 }
                 .navigationTitle("My Routes")
                 .toolbar {
@@ -73,17 +111,9 @@ struct RoutesView: View {
     
     // Filter routes based on search text and difficulty filter
     private func filteredRoutes() -> [Route] {
-        var routes = routeViewModel.userRoutes
+        var routes = routeViewModel.filteredUserRoutes
         
-        // Apply search filter
-        if !searchText.isEmpty {
-            routes = routes.filter { route in
-                route.title.localizedCaseInsensitiveContains(searchText) ||
-                route.description.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-        
-        // Apply difficulty filter
+        // Apply difficulty filter if selected
         if let difficulty = filterDifficulty {
             routes = routes.filter { $0.difficulty == difficulty }
         }

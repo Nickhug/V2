@@ -10,12 +10,12 @@ public struct AnimatedGradientBackground: View {
     
     // Monochromatic color palette with subtle variations
     private let colors: [Color] = [
-        Color(white: 0.05),      // Nearly black
-        Color(white: 0.08),      // Very dark gray
-        Color(white: 0.12),      // Dark gray
-        Color(white: 0.15),      // Medium-dark gray
-        Color(white: 0.2),       // Medium gray
-        Color(white: 0.25)       // Light-medium gray
+        Color(white: 0.02),      // Nearly black
+        Color(white: 0.04),      // Very dark gray
+        Color(white: 0.06),      // Dark gray
+        Color(white: 0.08),      // Medium-dark gray
+        Color(white: 0.1),       // Medium gray
+        Color(white: 0.13)       // Light-medium gray
     ]
     
     public var body: some View {
@@ -321,12 +321,12 @@ public struct AnimatedGradientBackgroundCustom: View {
     }
     
     public init(colors: [Color] = [
-        Color(white: 0.05),      // Nearly black
-        Color(white: 0.08),      // Very dark gray
-        Color(white: 0.12),      // Dark gray
-        Color(white: 0.15),      // Medium-dark gray
-        Color(white: 0.2),       // Medium gray
-        Color(white: 0.25)       // Light-medium gray
+        Color(white: 0.02),      // Nearly black
+        Color(white: 0.04),      // Very dark gray
+        Color(white: 0.06),      // Dark gray
+        Color(white: 0.08),      // Medium-dark gray
+        Color(white: 0.1),       // Medium gray
+        Color(white: 0.13)       // Light-medium gray
     ], 
                 speed: Double = 1.0,
                 autoReverse: Bool = false) {
@@ -361,12 +361,12 @@ struct AnimatedGradientBackground_Previews: PreviewProvider {
             // Custom version with slightly different monochromatic scheme
             AnimatedGradientBackgroundCustom(
                 colors: [
-                    Color(white: 0.04),   // Nearly black
-                    Color(white: 0.07),   // Very dark gray
-                    Color(white: 0.1),    // Dark gray
-                    Color(white: 0.14),   // Medium-dark gray
-                    Color(white: 0.18),   // Medium gray
-                    Color(white: 0.22)    // Light-medium gray
+                    Color(white: 0.01),   // Nearly black
+                    Color(white: 0.03),   // Very dark gray
+                    Color(white: 0.05),   // Dark gray
+                    Color(white: 0.07),   // Medium-dark gray
+                    Color(white: 0.09),   // Medium gray
+                    Color(white: 0.12)    // Light-medium gray
                 ],
                 speed: 1.2
             )

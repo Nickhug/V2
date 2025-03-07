@@ -43,6 +43,31 @@ struct Meet: Identifiable, Codable {
         nil
     }
     
+    // Helper method to create a copy with updated status
+    func withUpdatedStatus(_ newStatus: MeetStatus) -> Meet {
+        return Meet(
+            id: self.id,
+            title: self.title,
+            description: self.description,
+            date: self.date,
+            location: self.location,
+            address: self.address,
+            type: self.type,
+            coverImage: self.coverImage,
+            rules: self.rules,
+            tags: self.tags,
+            isPremium: self.isPremium,
+            capacity: self.capacity,
+            creatorId: self.creatorId,
+            status: newStatus,
+            vehicleType: self.vehicleType,
+            routeType: self.routeType,
+            primaryRouteId: self.primaryRouteId,
+            createdAt: self.createdAt,
+            updatedAt: Date() // Update the updatedAt timestamp
+        )
+    }
+    
     enum CodingKeys: String, CodingKey {
         case id
         case title

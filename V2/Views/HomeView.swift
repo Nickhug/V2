@@ -7,8 +7,220 @@ struct HomeView: View {
     @State private var searchText = ""
     @State private var selectedFeedTab = 0
     @State private var showingCreateMeet = false
+    @State private var notificationRefreshTimer: Timer?
+    @State private var showingNotifications = false
     
-    private let tabs = ["Recent", "Friends", "Popular"]
+    private let tabs = ["Recent", "Popular", "Nearby"]
+    
+    // Modern feed view with horizontally scrolling categories
+    private var modernFeedView: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Featured Meet (most recent with status badge)
+                if let featuredMeet = meetViewModel.upcomingMeets.first {
+                    featuredMeetCard(featuredMeet)
+                }
+                
+                // Status-based sections (horizontal scrolling)
+                MeetsByStatusView(viewModel: meetViewModel)
+                
+                // Tab-specific feed content
+                tabSpecificContent
+                    .padding(.top, 16)
+            }
+            .padding(.bottom, 80)
+        }
+        .refreshable {
+            Task {
+                await viewModel.refresh()
+                await meetViewModel.forceRefreshAll()
+            }
+        }
+    }
+    
+    // Featured meet card with larger style and status badge
+    private func featuredMeetCard(_ meet: Meet) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topTrailing) {
+                // Cover image
+                AsyncImageView(imageName: meet.coverImage)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large))
+                    .overlay(
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                .black.opacity(0.4),
+                                .black.opacity(0.7)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large))
+                    )
+                    .pronouncedShadow()
+                
+                // Status badge
+                AnimatedStatusBadge(status: meet.status, size: .regular)
+                    .padding(12)
+            }
+            
+            // Content overlay
+            VStack(alignment: .leading, spacing: 8) {
+                // Title, date and location
+                Text(meet.title)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(MeetSpotColors.pink500)
+                    Text(meet.date.formatted(date: .abbreviated, time: .shortened))
+                        .foregroundColor(.white.opacity(0.9))
+                    
+                    Spacer()
+                    
+                    Image(systemName: "mappin.circle.fill")
+                        .foregroundColor(MeetSpotColors.pink500)
+                    Text(meet.address.components(separatedBy: ",").first ?? meet.address)
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
+                .font(.subheadline)
+                
+                // Attendance and type
+                HStack {
+                    HStack(spacing: 2) {
+                        Image(systemName: "person.3.fill")
+                            .foregroundColor(MeetSpotColors.pink500)
+                        Text("\(meet.attendees.count) attending")
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                    
+                    Spacer()
+                    
+                    Text(meet.type.rawValue.capitalized)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(meet.type.color)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                }
+                .font(.subheadline)
+                
+                // Action button
+                Button {
+                    showingCreateMeet = true
+                } label: {
+                    Text("View Details")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(MeetSpotColors.accentGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.medium))
+                        .mediumShadow()
+                }
+                .padding(.top, 8)
+            }
+            .padding(16)
+            .background(Color.black.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large))
+            .offset(y: -70)
+            .padding(.bottom, -70)
+        }
+        .padding(.horizontal)
+    }
+    
+    // Tab-specific content for each feed tab
+    @ViewBuilder
+    private var tabSpecificContent: some View {
+        switch selectedFeedTab {
+        case 0: // Recent
+            meetsFeedSection(
+                title: "Recently Added",
+                meets: viewModel.filteredUpcomingMeets,
+                emptyMessage: "No upcoming meets found"
+            )
+            
+        case 1: // Popular
+            meetsFeedSection(
+                title: "Popular Meets",
+                meets: viewModel.filteredRecommendedMeets,
+                emptyMessage: "No recommended meets found"
+            )
+            
+        case 2: // Nearby
+            meetsFeedSection(
+                title: "Meets Near You",
+                meets: viewModel.filteredNearbyMeets,
+                emptyMessage: "No nearby meets found"
+            )
+            
+        default:
+            EmptyView()
+        }
+    }
+    
+    // Section for specific meet categories
+    private func meetsFeedSection(title: String, meets: [Meet], emptyMessage: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding(.horizontal)
+            
+            if meets.isEmpty {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.5)
+                        .frame(maxWidth: .infinity, minHeight: 200)
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.system(size: 40))
+                            .foregroundColor(.white.opacity(0.7))
+                        
+                        Text(emptyMessage)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                        
+                        if !viewModel.searchQuery.isEmpty {
+                            Text("Try a different search term")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                    .padding()
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large))
+                    .padding(.horizontal)
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(meets) { meet in
+                            MeetCard(meet: meet, onTap: {
+                                selectedMeet = meet
+                                showingMeetDetail = true
+                            })
+                            .frame(width: 300)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -30,12 +242,31 @@ struct HomeView: View {
                             .font(.title2)
                             .foregroundColor(.white)
                         
-                        NavigationLink(destination: NotificationsView()) {
+                        // Simple button to show notifications
+                        Button(action: {
+                            showingNotifications = true
+                        }) {
                             NotificationButton(count: viewModel.unreadNotificationsCount)
                         }
+                        .buttonStyle(PlainButtonStyle()) // Ensure proper tap handling
                     }
                     .padding(.horizontal)
                     .padding(.top, 8)
+                    
+                    // Search Bar
+                    SearchBar(
+                        text: $viewModel.searchQuery,
+                        placeholder: "Search meets...",
+                        onTextChange: { _ in
+                            // The HomeViewModel already handles search through debounce and computed properties
+                        }
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
+                    // Status Filter
+                    StatusFilterView(viewModel: meetViewModel)
+                    .padding(.bottom, 4)
                     
                     // Tab Selection
                     HStack {
@@ -64,7 +295,6 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .padding(.horizontal)
                     .padding(.vertical, 8)
                     
                     Divider()
@@ -72,24 +302,10 @@ struct HomeView: View {
                         .padding(.horizontal)
                 }
                 .background(Color.black.opacity(0.2))
+                .mediumShadow()
                 
-                // Feed Content
-                ScrollView {
-                    LazyVStack(spacing: MeetSpotStyle.Spacing.medium) {
-                        ForEach(getFeedItems()) { meet in
-                            FeedCard(meet: meet)
-                                .environmentObject(meetViewModel)
-                        }
-                    }
-                    .padding()
-                }
-                .refreshable {
-                    Task {
-                        await viewModel.refresh()
-                        await meetViewModel.fetchUpcomingMeets()
-                        await meetViewModel.fetchNearbyMeets()
-                    }
-                }
+                // Main feed content
+                modernFeedView
             }
             
             // Floating Action Button
@@ -106,45 +322,52 @@ struct HomeView: View {
                             .frame(width: 60, height: 60)
                             .background(MeetSpotColors.accentGradient)
                             .clipShape(Circle())
-                            .shadow(color: Color.black.opacity(0.3), radius: 8, x: 0, y: 4)
+                            .pronouncedShadow()
                     }
                     .padding()
                 }
             }
         }
+        .onAppear {
+            // Set up timer to refresh notification count every 30 seconds
+            notificationRefreshTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+                Task {
+                    await viewModel.fetchUnreadNotificationsCount()
+                }
+            }
+            
+            // Refresh immediately
+            Task {
+                await viewModel.fetchUnreadNotificationsCount()
+                await meetViewModel.forceRefreshAll()
+            }
+        }
+        .onDisappear {
+            // Clean up timer when view disappears
+            notificationRefreshTimer?.invalidate()
+            notificationRefreshTimer = nil
+        }
         .sheet(isPresented: $showingCreateMeet) {
             // This would navigate to your create meet view
             NavigationView {
-                Text("Create New Meet")
-                    .navigationTitle("New Meet")
+                CreateMeetView(viewModel: meetViewModel)
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+        .sheet(isPresented: $showingNotifications) {
+            NavigationView {
+                NotificationsView()
+                    .navigationBarTitleDisplayMode(.inline)
             }
         }
         .task {
-            await meetViewModel.fetchUpcomingMeets()
-            await meetViewModel.fetchNearbyMeets()
+            await meetViewModel.forceRefreshAll()
         }
     }
     
-    private func getFeedItems() -> [Meet] {
-        switch selectedFeedTab {
-        case 0: // Recent
-            return meetViewModel.upcomingMeets + meetViewModel.nearbyMeets
-        case 1: // Friends
-            // This would filter for friend's meets
-            return meetViewModel.upcomingMeets.filter { _ in
-                // Placeholder logic - in reality, we'd check if the creator is a friend
-                Bool.random()
-            }
-        case 2: // Popular
-            // This would sort meets by some popularity metric
-            return meetViewModel.nearbyMeets.sorted { _, _ in
-                // Placeholder logic - in reality, we'd sort by number of attendees or similar
-                Bool.random()
-            }
-        default:
-            return meetViewModel.upcomingMeets
-        }
-    }
+    // MARK: - State for Navigation
+    @State private var selectedMeet: Meet?
+    @State private var showingMeetDetail = false
 }
 
 struct FeedCard: View {
@@ -220,6 +443,7 @@ struct FeedCard: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.medium))
+                    .mediumShadow()
             }
             
             // Location and date info
@@ -254,6 +478,7 @@ struct FeedCard: View {
                                 .padding(8)
                                 .background(Color.white.opacity(0.1))
                                 .clipShape(Circle())
+                                .subtleShadow()
                         }
                     }
                 }
@@ -303,6 +528,7 @@ struct FeedCard: View {
                     .padding(.horizontal, 12)
                     .background(Color.white.opacity(0.1))
                     .clipShape(Capsule())
+                    .subtleShadow()
                 }
                 
                 Spacer()
@@ -317,12 +543,14 @@ struct FeedCard: View {
                         .padding(.horizontal, 12)
                         .background(MeetSpotColors.accentGradient)
                         .clipShape(Capsule())
+                        .mediumShadow()
                 }
             }
         }
         .padding()
         .background(Color.white.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large))
+        .mediumShadow()
         .onTapGesture {
             showingMeetDetail = true
         }
@@ -357,25 +585,76 @@ struct FeedCard: View {
 
 struct NotificationButton: View {
     let count: Int
+    @State private var isAnimating = false
     
     var body: some View {
         ZStack(alignment: .topTrailing) {
+            // Bell icon with glass effect
             Image(systemName: "bell.fill")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(MeetSpotColors.text)
+                .foregroundColor(.white)
                 .padding(MeetSpotStyle.Spacing.small)
-                .background(MeetSpotColors.accentGradient)
-                .clipShape(Circle())
+                .background(
+                    Circle()
+                        .fill(Material.ultraThinMaterial)
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            MeetSpotColors.pink500.opacity(0.7),
+                                            MeetSpotColors.purple900.opacity(0.5)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1.5
+                                )
+                        )
+                )
+                .mediumShadow()
+                .scaleEffect(isAnimating ? 1.1 : 1.0)
+                .onAppear {
+                    if count > 0 {
+                        withAnimation(Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
+                            isAnimating = true
+                        }
+                    } else {
+                        // Stop animation if count becomes 0
+                        isAnimating = false
+                    }
+                }
+                .onChange(of: count) { _, newCount in
+                    if newCount > 0 && !isAnimating {
+                        withAnimation(Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
+                            isAnimating = true
+                        }
+                    } else if newCount == 0 {
+                        isAnimating = false
+                    }
+                }
             
+            // Notification badge
             if count > 0 {
                 Text("\(count)")
-                    .font(.caption2)
-                    .foregroundColor(MeetSpotColors.text)
-                    .padding(4)
-                    .background(MeetSpotColors.pink500)
-                    .clipShape(Circle())
-                    .offset(x: 4, y: -4)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(5)
+                    .background(
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [MeetSpotColors.pink500, MeetSpotColors.purple900],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .subtleShadow()
+                    )
+                    .offset(x: 5, y: -5)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
+        .contentShape(Circle())
     }
 } 

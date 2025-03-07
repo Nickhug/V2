@@ -3,14 +3,28 @@ import MapKit
 import CoreLocation
 
 struct RoutesListView: View {
-    @StateObject private var viewModel = RouteViewModel()
+    @EnvironmentObject private var viewModel: RouteViewModel
     @State private var showingRouteEditor = false
     @State private var showingRouteDetail = false
     @State private var selectedRoute: Route?
     @State private var isPresentingDeleteConfirm = false
     
+    var routes: [Route]? = nil
     var meetId: String?
     var editable: Bool = true
+    
+    // Use the provided routes or fall back to the appropriate routes from the viewModel
+    private var displayedRoutes: [Route] {
+        if let routes = routes {
+            return routes
+        } else if let meetId = meetId, !meetId.isEmpty {
+            return viewModel.meetRoutes
+        } else if editable {
+            return viewModel.userRoutes
+        } else {
+            return viewModel.routes
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -28,57 +42,73 @@ struct RoutesListView: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
-                            .background(DesignSystem.Colors.accentGradient)
+                            .background(
+                                Capsule()
+                                    .fill(MeetSpotColors.accentGradient)
+                            )
                             .foregroundColor(.white)
-                            .clipShape(Capsule())
                         }
                         .padding(.trailing)
-                        .padding(.bottom, 4)
                     }
+                    .padding(.vertical, 8)
                 }
                 
-                if viewModel.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if getRoutes().isEmpty {
-                    emptyState
+                if displayedRoutes.isEmpty {
+                    VStack(spacing: 20) {
+                        Spacer()
+                        
+                        Image(systemName: "map")
+                            .font(.system(size: 60))
+                            .foregroundColor(.gray)
+                        
+                        Text(editable ? "You haven't created any routes yet" : "No routes available")
+                            .font(.headline)
+                        
+                        if editable {
+                            Button {
+                                showingRouteEditor = true
+                            } label: {
+                                Text("Create Your First Route")
+                                    .padding()
+                                    .background(MeetSpotColors.accentGradient)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(10)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding()
                 } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(getRoutes()) { route in
-                                RouteCard(route: route)
-                                    .onTapGesture {
-                                        selectedRoute = route
-                                        showingRouteDetail = true
-                                    }
-                                    .contextMenu {
-                                        if editable {
-                                            Button {
-                                                selectedRoute = route
-                                                showingRouteEditor = true
-                                            } label: {
-                                                Label("Edit", systemImage: "pencil")
-                                            }
-                                            
-                                            Button(role: .destructive) {
-                                                selectedRoute = route
-                                                isPresentingDeleteConfirm = true
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
+                    List {
+                        ForEach(displayedRoutes) { route in
+                            RouteRow(route: route)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedRoute = route
+                                    showingRouteDetail = true
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    if editable {
+                                        Button(role: .destructive) {
+                                            selectedRoute = route
+                                            isPresentingDeleteConfirm = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
                                         
                                         Button {
-                                            // Share route (e.g., via a URL or text)
-                                            shareRoute(route)
+                                            viewModel.startEditingRoute(route)
+                                            showingRouteEditor = true
                                         } label: {
-                                            Label("Share", systemImage: "square.and.arrow.up")
+                                            Label("Edit", systemImage: "pencil")
                                         }
+                                        .tint(.blue)
                                     }
-                            }
+                                }
                         }
-                        .padding()
                     }
+                    .listStyle(.plain)
                 }
             }
             
@@ -137,39 +167,6 @@ struct RoutesListView: View {
         }
     }
     
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "map")
-                .font(.system(size: 70))
-                .foregroundColor(.secondary)
-            
-            Text(meetId != nil ? "No Routes Found" : "You haven't created any routes yet")
-                .font(.headline)
-            
-            Text(meetId != nil ? "This meet doesn't have any routes attached." : "Create a route to get started planning your drives.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            if editable {
-                Button {
-                    showingRouteEditor = true
-                } label: {
-                    Text(meetId != nil ? "Add Route to Meet" : "Create Your First Route")
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(DesignSystem.Colors.accentGradient)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                }
-                .padding(.top)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-    
     private func loadRoutes() {
         Task {
             if let meetId = meetId {
@@ -180,14 +177,6 @@ struct RoutesListView: View {
         }
     }
     
-    private func getRoutes() -> [Route] {
-        if meetId != nil {
-            return viewModel.meetRoutes
-        } else {
-            return viewModel.userRoutes
-        }
-    }
-    
     private func deleteRoute(_ route: Route) {
         Task {
             let success = await viewModel.deleteRoute(id: route.id)
@@ -195,105 +184,6 @@ struct RoutesListView: View {
                 selectedRoute = nil
             }
         }
-    }
-    
-    private func shareRoute(_ route: Route) {
-        // Create a simple text representation of the route
-        let shareText = """
-        Check out this route: \(route.title)
-        
-        Distance: \(String(format: "%.1f", route.distance)) km
-        Estimated time: \(route.estimatedTime) minutes
-        Difficulty: \(route.difficulty.rawValue.capitalized)
-        
-        \(route.description)
-        """
-        
-        let activityVC = UIActivityViewController(
-            activityItems: [shareText],
-            applicationActivities: nil
-        )
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootViewController = windowScene.windows.first?.rootViewController {
-            activityVC.popoverPresentationController?.sourceView = rootViewController.view
-            rootViewController.present(activityVC, animated: true, completion: nil)
-        }
-    }
-}
-
-struct RouteCard: View {
-    var route: Route
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(route.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Spacer()
-                
-                Label {
-                    Text("\(String(format: "%.1f", route.distance)) km")
-                } icon: {
-                    Image(systemName: "speedometer")
-                        .foregroundColor(.blue)
-                }
-                .font(.subheadline)
-            }
-            
-            if !route.description.isEmpty {
-                Text(route.description)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            HStack {
-                Label {
-                    Text("\(route.estimatedTime) min")
-                } icon: {
-                    Image(systemName: "clock")
-                        .foregroundColor(.orange)
-                }
-                .font(.caption)
-                
-                Spacer()
-                
-                Label {
-                    Text(route.difficulty.rawValue.capitalized)
-                } icon: {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .foregroundColor(.purple)
-                }
-                .font(.caption)
-                
-                Spacer()
-                
-                Label {
-                    Text("\(route.routeData.waypoints.count) waypoints")
-                } icon: {
-                    Image(systemName: "mappin.and.ellipse")
-                        .foregroundColor(.red)
-                }
-                .font(.caption)
-            }
-            
-            // Small preview map
-            if !route.routeData.coordinates.isEmpty {
-                RouteMapPreview(route: route)
-                    .frame(height: 120)
-                    .cornerRadius(8)
-                    .padding(.top, 4)
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                .fill(Theme.Colors.surface.opacity(0.3))
-                .background(.ultraThinMaterial)
-        )
     }
 }
 
@@ -399,5 +289,56 @@ struct RouteDetailView: View {
                 viewModel.selectedRoute = route
             }
         }
+    }
+}
+
+struct RouteRow: View {
+    let route: Route
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Route thumbnail/icon
+            ZStack {
+                Circle()
+                    .fill(MeetSpotColors.accentGradient)
+                    .frame(width: 50, height: 50)
+                
+                Image(systemName: "map.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white)
+            }
+            
+            // Route details
+            VStack(alignment: .leading, spacing: 4) {
+                Text(route.title)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(route.description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                
+                HStack(spacing: 12) {
+                    Label("\(String(format: "%.1f", route.distance)) km", systemImage: "arrow.triangle.swap")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Label("\(route.estimatedTime) min", systemImage: "clock")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Label(route.difficulty.rawValue.capitalized, systemImage: "chart.bar.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 8)
     }
 } 

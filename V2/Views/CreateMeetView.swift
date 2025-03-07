@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import PhotosUI
+import UIKit
 
 struct CreateMeetView: View {
     @Environment(\.dismiss) private var dismiss
@@ -345,60 +346,6 @@ struct CreateMeetView: View {
                 showError = true
             }
             isLoading = false
-        }
-    }
-}
-
-struct MeetTypeButton: View {
-    let type: V2MeetType
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack {
-                Image(systemName: type.iconName)
-                    .font(.system(size: 24))
-                Text(type.displayName)
-                    .font(.caption)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(isSelected ? type.color.opacity(0.2) : Color.clear)
-            .foregroundColor(isSelected ? type.color : .primary)
-            .cornerRadius(10)
-        }
-    }
-}
-
-struct ImagePicker: UIViewControllerRepresentable {
-    @Binding var image: UIImage?
-    @Environment(\.dismiss) private var dismiss
-    
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.delegate = context.coordinator
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-    
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: ImagePicker
-        
-        init(_ parent: ImagePicker) {
-            self.parent = parent
-        }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let image = info[.originalImage] as? UIImage {
-                parent.image = image
-            }
-            parent.dismiss()
         }
     }
 }

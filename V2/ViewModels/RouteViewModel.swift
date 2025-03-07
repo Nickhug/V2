@@ -45,6 +45,49 @@ class RouteViewModel: ObservableObject {
     // Internal tracking of last location request to prevent duplicate requests
     private var lastLocationRequestTimestamp: Date = Date(timeIntervalSince1970: 0)
     
+    // Add these properties to the RouteViewModel class
+    @Published var searchQuery: String = ""
+    
+    // Returns routes filtered by searchQuery and difficulty
+    var filteredUserRoutes: [Route] {
+        if searchQuery.isEmpty {
+            return userRoutes
+        }
+        
+        return userRoutes.filter { route in
+            route.title.localizedCaseInsensitiveContains(searchQuery) ||
+            route.description.localizedCaseInsensitiveContains(searchQuery) ||
+            route.creator.localizedCaseInsensitiveContains(searchQuery) ||
+            route.difficultyString.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
+    var filteredRoutes: [Route] {
+        if searchQuery.isEmpty {
+            return routes
+        }
+        
+        return routes.filter { route in
+            route.title.localizedCaseInsensitiveContains(searchQuery) ||
+            route.description.localizedCaseInsensitiveContains(searchQuery) ||
+            route.creator.localizedCaseInsensitiveContains(searchQuery) ||
+            route.difficultyString.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
+    var filteredMeetRoutes: [Route] {
+        if searchQuery.isEmpty {
+            return meetRoutes
+        }
+        
+        return meetRoutes.filter { route in
+            route.title.localizedCaseInsensitiveContains(searchQuery) ||
+            route.description.localizedCaseInsensitiveContains(searchQuery) ||
+            route.creator.localizedCaseInsensitiveContains(searchQuery) ||
+            route.difficultyString.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
     // Fetch all routes
     func fetchRoutes() async {
         isLoading = true

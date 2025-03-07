@@ -85,7 +85,7 @@ struct VehiclesView: View {
         }
         .background(DesignSystem.Colors.backgroundGradient)
         .sheet(isPresented: $showingAddVehicle) {
-            AddVehicleView { newVehicle in
+            VehicleOnboardingView { newVehicle in
                 Task {
                     do {
                         try await viewModel.createVehicle(newVehicle)
@@ -96,6 +96,7 @@ struct VehiclesView: View {
                     }
                 }
             }
+            .environmentObject(AuthManager())
         }
         .alert("Error", isPresented: $showingError, presenting: error) { _ in
             Button("OK", role: .cancel) {}

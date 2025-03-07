@@ -46,6 +46,11 @@ class MeetViewModel: ObservableObject {
     @Published var followers: [User] = []
     @Published var recentAchievements: [Achievement] = []
     @Published var recentActivity: [Activity] = []
+    @Published var searchQuery: String = ""
+    @Published var activelyFilteringByStatus = false
+    @Published var selectedStatusFilter: MeetStatus?
+    @Published var meetsByStatus: [MeetStatus: [Meet]] = [:]
+    private var allLocations: [Location] = []
     
     private let supabase = SupabaseService.shared
     private let userService = UserService.shared
@@ -66,6 +71,9 @@ class MeetViewModel: ObservableObject {
     
     private func setupInitialState() {
         // Any synchronous initialization can go here
+        Task {
+            await forceRefreshAll()
+        }
     }
     
     private func setupSubscriptions() async {
@@ -124,6 +132,14 @@ class MeetViewModel: ObservableObject {
                 await fetchUpcomingMeets()
                 await fetchNearbyMeets()
             }
+        }
+        
+        // After loading the meets
+        updateMeetsByStatus()
+        
+        // Schedule status refresh
+        Task {
+            await refreshMeetStatuses()
         }
     }
     
@@ -232,12 +248,7 @@ class MeetViewModel: ObservableObject {
     // MARK: - Meets
     
     func refreshMeets() async {
-        do {
-            try await fetchMeets()
-        } catch {
-            self.error = MeetError.networkError
-            print("Error refreshing meets: \(error)")
-        }
+        await forceRefreshAll()
     }
     
     func fetchMeets(status: MeetStatus? = nil, vehicleType: VehicleType? = nil, routeType: RouteType? = nil) async throws {
@@ -273,7 +284,8 @@ class MeetViewModel: ObservableObject {
         coverImage: UIImage,
         capacity: Int,
         vehicleType: VehicleType,
-        routeType: RouteType
+        routeType: RouteType,
+        primaryRouteId: String? = nil
     ) async throws {
         // Try to use current user or fetch a new one if nil
         if currentUser == nil {
@@ -313,7 +325,8 @@ class MeetViewModel: ObservableObject {
                 creatorId: user.id,
                 status: .upcoming,
                 vehicleType: vehicleType,
-                routeType: routeType
+                routeType: routeType,
+                primaryRouteId: primaryRouteId
             )
             
             let createdMeet = try await supabase.createMeet(newMeet)
@@ -878,6 +891,219 @@ class MeetViewModel: ObservableObject {
             self.recentAchievements = []
             self.recentActivity = []
         }
+    }
+    
+    // Returns meets filtered by searchQuery
+    var filteredMeets: [Meet] {
+        if searchQuery.isEmpty {
+            return meets
+        }
+        
+        return meets.filter { meet in
+            meet.title.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.description.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.locationName.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
+    // Returns locations filtered by searchQuery
+    var filteredLocations: [Location] {
+        if searchQuery.isEmpty {
+            return allLocations
+        }
+        
+        return allLocations.filter { location in
+            location.name.localizedCaseInsensitiveContains(searchQuery) ||
+            location.address.localizedCaseInsensitiveContains(searchQuery) ||
+            location.city?.localizedCaseInsensitiveContains(searchQuery) ?? false ||
+            location.state?.localizedCaseInsensitiveContains(searchQuery) ?? false ||
+            location.country?.localizedCaseInsensitiveContains(searchQuery) ?? false
+        }
+    }
+    
+    // Method to search for locations from an API or backend
+    func searchLocations(query: String) async {
+        guard !query.isEmpty else {
+            await MainActor.run {
+                allLocations = []
+            }
+            return
+        }
+        
+        isLoading = true
+        
+        // In a real app, this would call an API to search for locations
+        // For demo purposes, we'll simulate a delay and return mock data
+        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+        
+        let mockLocations = [
+            Location(id: "1", name: "Central Park", address: "Central Park, New York, NY", latitude: 40.7812, longitude: -73.9665, city: "New York", state: "NY", country: "USA"),
+            Location(id: "2", name: "Miami Beach", address: "Miami Beach, FL", latitude: 25.7907, longitude: -80.1300, city: "Miami", state: "FL", country: "USA"),
+            Location(id: "3", name: "Golden Gate Park", address: "Golden Gate Park, San Francisco, CA", latitude: 37.7694, longitude: -122.4862, city: "San Francisco", state: "CA", country: "USA"),
+            Location(id: "4", name: "Starbucks Coffee", address: "123 Main St, Seattle, WA", latitude: 47.6062, longitude: -122.3321, city: "Seattle", state: "WA", country: "USA"),
+            Location(id: "5", name: "Downtown Coffeehouse", address: "456 Market St, San Francisco, CA", latitude: 37.7941, longitude: -122.3970, city: "San Francisco", state: "CA", country: "USA")
+        ]
+        
+        let filtered = mockLocations.filter { location in
+            location.name.localizedCaseInsensitiveContains(query) ||
+            location.address.localizedCaseInsensitiveContains(query) ||
+            location.city?.localizedCaseInsensitiveContains(query) ?? false ||
+            location.state?.localizedCaseInsensitiveContains(query) ?? false ||
+            location.country?.localizedCaseInsensitiveContains(query) ?? false
+        }
+        
+        await MainActor.run {
+            allLocations = filtered
+            isLoading = false
+        }
+    }
+    
+    // Add a new computed property to filter meets by status
+    var filteredMeetsByStatus: [Meet] {
+        if let selectedStatus = selectedStatusFilter {
+            return meets.filter { $0.status == selectedStatus }
+        } else {
+            return meets
+        }
+    }
+    
+    // Add a new method to refresh meet statuses
+    func refreshMeetStatuses() async {
+        var updatedMeets = 0
+        
+        for (_, meet) in meets.enumerated() {
+            let calculatedStatus = MeetStatus.determineStatus(meetDate: meet.date)
+            
+            // Only update if the status has changed
+            if calculatedStatus != meet.status {
+                do {
+                    try await updateMeetStatus(meetId: meet.id, status: calculatedStatus)
+                    updatedMeets += 1
+                } catch {
+                    print("Error updating meet status: \(error)")
+                }
+            }
+        }
+        
+        if updatedMeets > 0 {
+            print("Updated status for \(updatedMeets) meets")
+            try? await fetchMeets() // Refresh the meets list
+        }
+        
+        // Categorize meets by status
+        updateMeetsByStatus()
+    }
+    
+    // Add a method to update a single meet status
+    func updateMeetStatus(meetId: String, status: MeetStatus) async throws {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            try await supabase.client.from("meets")
+                .update(["status": status.rawValue, "updated_at": ISO8601DateFormatter().string(from: Date())])
+                .eq("id", value: meetId)
+                .execute()
+            
+            // Update the meet locally
+            if let index = meets.firstIndex(where: { $0.id == meetId }) {
+                // Create a new Meet with updated status using the helper method
+                let updatedMeet = meets[index].withUpdatedStatus(status)
+                meets[index] = updatedMeet
+                
+                // Also update in any other arrays that might contain this meet
+                updateMeetInArrays(updatedMeet)
+            }
+        } catch {
+            print("Error updating meet status: \(error)")
+            throw MeetError.networkError
+        }
+    }
+    
+    // Helper to update meet in all arrays
+    private func updateMeetInArrays(_ updatedMeet: Meet) {
+        // Update in userMeets
+        if let index = userMeets.firstIndex(where: { $0.id == updatedMeet.id }) {
+            userMeets[index] = updatedMeet
+        }
+        
+        // Update in attendingMeets
+        if let index = attendingMeets.firstIndex(where: { $0.id == updatedMeet.id }) {
+            attendingMeets[index] = updatedMeet
+        }
+        
+        // Update in upcomingMeets
+        if let index = upcomingMeets.firstIndex(where: { $0.id == updatedMeet.id }) {
+            upcomingMeets[index] = updatedMeet
+        }
+        
+        // Update in nearbyMeets
+        if let index = nearbyMeets.firstIndex(where: { $0.id == updatedMeet.id }) {
+            nearbyMeets[index] = updatedMeet
+        }
+        
+        // Update the meetsByStatus dictionary
+        updateMeetsByStatus()
+    }
+    
+    // Organize meets by their status
+    private func updateMeetsByStatus() {
+        var categorized: [MeetStatus: [Meet]] = [:]
+        
+        for status in MeetStatus.allCases {
+            categorized[status] = meets.filter { $0.status == status }
+        }
+        
+        meetsByStatus = categorized
+    }
+    
+    // Add status filter toggle functionality
+    func toggleStatusFilter(_ status: MeetStatus?) {
+        if selectedStatusFilter == status {
+            // If tapping the same status again, clear the filter
+            selectedStatusFilter = nil
+            activelyFilteringByStatus = false
+        } else {
+            // Set the new status filter
+            selectedStatusFilter = status
+            activelyFilteringByStatus = true
+        }
+    }
+    
+    // MARK: - Data Refresh Methods
+    
+    /// Forces a complete refresh of all meet collections
+    func forceRefreshAll() async {
+        isLoading = true
+        
+        do {
+            try await fetchMeets()
+            await fetchUpcomingMeets()
+            await fetchNearbyMeets()
+            updateMeetsByStatus()
+            await refreshMeetStatuses()
+            print("✅ Successfully loaded \(meets.count) meets")
+            
+            if meets.isEmpty {
+                print("⚠️ No meets found in database. Loading mock data for preview.")
+                // If no meets found, use mock data for preview
+                meets = Meet.mockMeets
+                await fetchUpcomingMeets()
+                await fetchNearbyMeets()
+                updateMeetsByStatus()
+            }
+        } catch {
+            print("❌ Error refreshing meets: \(error)")
+            self.error = MeetError.networkError
+            
+            // Fall back to mock data if fetch fails
+            meets = Meet.mockMeets
+            await fetchUpcomingMeets()
+            await fetchNearbyMeets()
+            updateMeetsByStatus()
+        }
+        
+        isLoading = false
     }
 }
 

@@ -24,6 +24,12 @@ struct MeetCard: View {
                     )))
                     .overlay(
                         VStack {
+                            HStack {
+                                Spacer()
+                                AnimatedStatusBadge(status: meet.status, size: .small)
+                                    .padding(10)
+                            }
+                            
                             Spacer()
                             HStack {
                                 Text(meet.type.rawValue)
@@ -40,10 +46,20 @@ struct MeetCard: View {
                     )
                 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(meet.title)
-                        .font(.headline)
-                        .fontWeight(.bold)
-                        .foregroundColor(style == .light ? .primary : .white)
+                    HStack {
+                        Text(meet.title)
+                            .font(.headline)
+                            .fontWeight(.bold)
+                            .foregroundColor(style == .light ? .primary : .white)
+                        
+                        Spacer()
+                        
+                        if meet.isPremium {
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
+                                .font(.caption)
+                        }
+                    }
                     
                     HStack {
                         Image(systemName: "calendar")
@@ -65,7 +81,7 @@ struct MeetCard: View {
                         
                         Spacer()
                         
-                        if let onJoin = onJoin {
+                        if let onJoin = onJoin, meet.status.allowsInteraction {
                             Button(action: onJoin) {
                                 Text("Join")
                                     .font(.subheadline)
@@ -76,6 +92,15 @@ struct MeetCard: View {
                                     .background(DesignSystem.Colors.accentGradient)
                                     .clipShape(Capsule())
                             }
+                        } else if !meet.status.allowsInteraction {
+                            // If meet is not joinable, show status instead
+                            HStack(spacing: 4) {
+                                Image(systemName: meet.status.icon)
+                                    .font(.caption)
+                                Text(meet.status.displayName)
+                                    .font(.caption)
+                            }
+                            .foregroundColor(meet.status.color)
                         } else {
                             // Host Avatar
                             Circle()
@@ -95,6 +120,7 @@ struct MeetCard: View {
             .background(style == .light ? Color(.secondarySystemBackground) : Color.white.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 3)
+            .opacity(meet.status == .canceled ? 0.7 : 1.0) // Dim canceled meets
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -102,7 +102,7 @@ extension DiscoverView.MeetFilter {
         case .upcoming:
             return .upcoming
         case .ongoing:
-            return .ongoing
+            return .active
         case .completed:
             return .completed
         }

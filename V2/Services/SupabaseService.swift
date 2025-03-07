@@ -15,6 +15,9 @@ enum SupabaseError: Error {
     case imageUploadFailed
     case notAuthenticated
     case authenticationError
+    case failedToFetchNotifications
+    case failedToUpdateNotification
+    case failedToDeleteNotification
 }
 
 @MainActor
@@ -519,6 +522,132 @@ class SupabaseService {
             .delete()
             .eq("id", value: id)
             .execute()
+    }
+    
+    // MARK: - Notifications
+    
+    func fetchNotifications() async throws -> [NotificationModel] {
+        guard let userId = try await getCurrentUserId() else {
+            throw SupabaseError.userNotFound
+        }
+        
+        do {
+            let result = try await client
+                .from("notifications")
+                .select("*")
+                .eq("user_id", value: userId.uuidString)
+                .order("created_at", ascending: false)
+                .execute()
+            
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            decoder.dateDecodingStrategy = .iso8601
+            
+            return try decoder.decode([NotificationModel].self, from: result.data)
+        } catch {
+            print("Error fetching notifications: \(error)")
+            throw SupabaseError.failedToFetchNotifications
+        }
+    }
+    
+    func getUnreadNotificationsCount() async throws -> Int {
+        guard let userId = try await getCurrentUserId() else {
+            throw SupabaseError.userNotFound
+        }
+        
+        do {
+            let result = try await client
+                .from("notifications")
+                .select("id")
+                .eq("user_id", value: userId.uuidString)
+                .eq("is_read", value: false)
+                .execute()
+            
+            // Parse the JSON array to count the number of objects
+            let json = try JSONSerialization.jsonObject(with: result.data)
+            if let array = json as? [[String: Any]] {
+                return array.count
+            }
+            return 0
+        } catch {
+            print("Error counting unread notifications: \(error)")
+            return 0 // Return 0 instead of throwing to prevent UI issues
+        }
+    }
+    
+    func markNotificationAsRead(_ notificationId: String) async throws {
+        do {
+            _ = try await client
+                .from("notifications")
+                .update(["is_read": true])
+                .eq("id", value: notificationId)
+                .execute()
+        } catch {
+            print("Error marking notification as read: \(error)")
+            throw SupabaseError.failedToUpdateNotification
+        }
+    }
+    
+    func markAllNotificationsAsRead() async throws {
+        guard let userId = try await getCurrentUserId() else {
+            throw SupabaseError.userNotFound
+        }
+        
+        do {
+            _ = try await client
+                .from("notifications")
+                .update(["is_read": true])
+                .eq("user_id", value: userId.uuidString)
+                .execute()
+        } catch {
+            print("Error marking all notifications as read: \(error)")
+            throw SupabaseError.failedToUpdateNotification
+        }
+    }
+    
+    func deleteNotification(_ notificationId: String) async throws {
+        do {
+            _ = try await client
+                .from("notifications")
+                .delete()
+                .eq("id", value: notificationId)
+                .execute()
+        } catch {
+            print("Error deleting notification: \(error)")
+            throw SupabaseError.failedToDeleteNotification
+        }
+    }
+    
+    func createNotification(userId: String, title: String, message: String, type: NotificationType, relatedId: String? = nil) async throws {
+        // Define a codable struct for the notification insert
+        struct NotificationInsert: Codable {
+            let user_id: String
+            let title: String
+            let message: String
+            let type: String
+            let related_id: String?
+            let is_read: Bool
+        }
+        
+        // Create a properly typed notification object
+        let notificationData = NotificationInsert(
+            user_id: userId,
+            title: title,
+            message: message,
+            type: type.rawValue,
+            related_id: relatedId,
+            is_read: false
+        )
+        
+        do {
+            _ = try await client
+                .from("notifications")
+                .insert(notificationData)
+                .execute()
+        } catch {
+            print("Error creating notification: \(error)")
+            throw SupabaseError.failedToUpdateNotification
+        }
     }
 }
 

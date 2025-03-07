@@ -15,36 +15,58 @@ struct ExploreView: View {
     @State private var searchText = ""
     @State private var isShowingMap = false
     @State private var initialLocationSet = false
+    @State private var showingCreateMeet = false
+    @State private var showSearchResults = false
+    @State private var isLoading = false
     
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Replace static background with animated gradient
-                AnimatedGradientBackground()
+        ZStack {
+            // Replace static background with animated gradient
+            AnimatedGradientBackground()
+            
+            VStack(spacing: 0) {
+                // Custom Header
+                customHeader
+                    .background(Color.black.opacity(0.2))
+                    .mediumShadow()
                 
-                // Map content
-                mapView
-                
-                // Preview Card
-                meetPreviewCardView
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    MeetSpotType.title("Explore Meets")
-                        .foregroundColor(.white)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: CreateMeetView(viewModel: viewModel)) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.white)
-                            .padding(8)
-                            .background(MeetSpotColors.secondaryGradient)
-                            .clipShape(Circle())
+                // Content Stack
+                ZStack {
+                    if showSearchResults && !viewModel.searchQuery.isEmpty {
+                        // Location search results view
+                        searchResultsView
+                    } else {
+                        // Map content
+                        mapView
+                        
+                        // Preview Card
+                        meetPreviewCardView
+                    }
+                    
+                    // Floating Action Button for Create
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showingCreateMeet = true
+                            }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 50, height: 50)
+                                    .background(MeetSpotColors.accentGradient)
+                                    .clipShape(Circle())
+                                    .pronouncedShadow()
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 100)
+                        }
                     }
                 }
+            }
+            .sheet(isPresented: $showingCreateMeet) {
+                CreateMeetOnboardingView(viewModel: viewModel)
             }
             .sheet(isPresented: $showFullDetails) {
                 if let meet = selectedMeet {
@@ -72,6 +94,107 @@ struct ExploreView: View {
                     Text(errorMessage)
                 }
             }
+        }
+        .edgesIgnoringSafeArea(.bottom)
+        .onAppear {
+            // Force immediate refresh when view appears
+            Task {
+                await forceRefreshMapData()
+            }
+        }
+    }
+    
+    // Search results view to display filtered locations and meets
+    private var searchResultsView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Section: Locations
+                LocationsSearchResultsSection(
+                    viewModel: viewModel,
+                    isLoading: viewModel.isLoading,
+                    locations: _viewModel.wrappedValue.filteredLocations,
+                    onLocationSelected: { location in
+                        // Update map to show the selected location
+                        let newRegion = MKCoordinateRegion(
+                            center: CLLocationCoordinate2D(
+                                latitude: location.latitude,
+                                longitude: location.longitude
+                            ),
+                            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                        )
+                        cameraPosition = .region(newRegion)
+                        showSearchResults = false
+                    }
+                )
+                
+                // Section: Meets
+                MeetsSearchResultsSection(
+                    meets: viewModel.filteredMeets,
+                    onMeetSelected: { meet in
+                        selectedMeet = meet
+                        showSearchResults = false
+                        
+                        // Update map to show the selected meet
+                        let newRegion = MKCoordinateRegion(
+                            center: meet.location,
+                            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                        )
+                        cameraPosition = .region(newRegion)
+                    }
+                )
+            }
+            .padding(.bottom, 30)
+        }
+        .background(AnimatedGradientBackground())
+    }
+
+    // MARK: - Computed Properties
+    
+    private var customHeader: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button(action: {
+                    // Toggle between map and list view
+                    withAnimation {
+                        isShowingMap.toggle()
+                    }
+                }) {
+                    Image(systemName: isShowingMap ? "list.bullet" : "map")
+                        .font(.title3)
+                        .foregroundColor(MeetSpotColors.pink500)
+                }
+                
+                Text("Explore Meets")
+                    .font(MeetSpotStyle.Typography.heading2)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                // Search button - removed as we now have a search bar
+            }
+            .padding(.horizontal)
+            
+            // Add Modern Search bar
+            SearchBar(
+                text: $viewModel.searchQuery,
+                placeholder: "Search locations or meets...",
+                onSearch: {
+                    // Perform search on submit
+                    Task {
+                        await viewModel.searchLocations(query: viewModel.searchQuery)
+                    }
+                    showSearchResults = true
+                },
+                onTextChange: { newValue in
+                    // Show search results when typing
+                    Task {
+                        await viewModel.searchLocations(query: newValue)
+                    }
+                    showSearchResults = !newValue.isEmpty
+                }
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 8)
         }
     }
 }
@@ -185,6 +308,32 @@ private extension ExploreView {
         )
         .allowsHitTesting(false)
         .ignoresSafeArea()
+    }
+    
+    private func forceRefreshMapData() async {
+        // Force refresh of meet data to ensure pins appear
+        isLoading = true
+        await viewModel.forceRefreshAll()
+        
+        // If needed, set initial location from first meet
+        if locationManager.location == nil && viewModel.meets.count > 0 {
+            let firstMeet = viewModel.meets[0]
+            let coordinates = CLLocationCoordinate2D(
+                latitude: firstMeet.location.latitude,
+                longitude: firstMeet.location.longitude
+            )
+            
+            withAnimation {
+                cameraPosition = .region(MKCoordinateRegion(
+                    center: coordinates,
+                    span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
+                ))
+                print("📍 Set map to first meet location: \(coordinates.latitude), \(coordinates.longitude)")
+            }
+        }
+        
+        print("🗺️ Map refreshed with \(viewModel.meets.count) meets")
+        isLoading = false
     }
 }
 
@@ -376,7 +525,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             locationManager.stopUpdatingLocation()
             locationManager.startUpdatingLocation()
         } else {
-            print("Not authorized for location, status: \(status.rawValue)")
+            print("LocationManager - Not authorized: \(status.rawValue)")
         }
     }
     
@@ -428,23 +577,7 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 }
 
-// Helper extension for custom corner radius
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
-        clipShape(RoundedCorner(radius: max(0, radius), corners: corners))
-    }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity
-    var corners: UIRectCorner = .allCorners
-
-    func path(in rect: CGRect) -> Path {
-        let safeRadius = max(0, radius)
-        let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: safeRadius, height: safeRadius))
-        return Path(path.cgPath)
-    }
-}
+// NOTE: Helper extension and shape for cornerRadius have been moved to ViewExtensions.swift
 
 // Extracted marker view for better performance
 struct MarkerView: View {
@@ -636,5 +769,144 @@ extension View {
     
     func primaryButton() -> some View {
         modifier(PrimaryButton())
+    }
+}
+
+// MARK: - Search Results Components
+private struct LocationsSearchResultsSection: View {
+    let viewModel: MeetViewModel
+    let isLoading: Bool
+    let locations: [Location]
+    let onLocationSelected: (Location) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Locations")
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal)
+            
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .tint(.white)
+                    Spacer()
+                }
+                .padding()
+            } else if locations.isEmpty {
+                Text("No locations found")
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                ForEach(locations) { location in
+                    LocationSearchResultRow(location: location, onTap: {
+                        onLocationSelected(location)
+                    })
+                }
+            }
+        }
+        .padding(.top)
+    }
+}
+
+private struct LocationSearchResultRow: View {
+    let location: Location
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Image(systemName: "mappin.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(MeetSpotColors.pink500)
+                
+                VStack(alignment: .leading) {
+                    Text(location.name)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Text(location.address)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Material.ultraThinMaterial)
+            )
+            .padding(.horizontal)
+        }
+    }
+}
+
+private struct MeetsSearchResultsSection: View {
+    let meets: [Meet]
+    let onMeetSelected: (Meet) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Meets")
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal)
+            
+            if meets.isEmpty {
+                Text("No meets found")
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            } else {
+                ForEach(meets) { meet in
+                    MeetSearchResultRow(meet: meet, onTap: {
+                        onMeetSelected(meet)
+                    })
+                }
+            }
+        }
+        .padding(.top)
+    }
+}
+
+private struct MeetSearchResultRow: View {
+    let meet: Meet
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Image(systemName: "car.fill")
+                    .font(.title2)
+                    .foregroundColor(MeetSpotColors.pink500)
+                
+                VStack(alignment: .leading) {
+                    Text(meet.title)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Text(meet.locationName)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Material.ultraThinMaterial)
+            )
+            .padding(.horizontal)
+        }
     }
 } 

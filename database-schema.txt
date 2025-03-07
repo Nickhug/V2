@@ -1,0 +1,160 @@
+Connected to database
+
+Tables in the database:
+=====================
+
+## Table: achievements
+Columns:
+  - id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - type (text, not nullable)
+  - title (text, not nullable)
+  - description (text, not nullable)
+  - icon (text, not nullable)
+  - earned_at (timestamp with time zone, not nullable)
+  - created_at (timestamp with time zone, not nullable)
+  - updated_at (timestamp with time zone, not nullable)
+Primary Key:
+  - id
+---
+
+## Table: comment_likes
+Columns:
+  - comment_id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - created_at (timestamp with time zone, nullable)
+Primary Key:
+  - comment_id
+  - user_id
+---
+
+## Table: followers
+Columns:
+  - id (uuid, not nullable)
+  - follower_id (uuid, not nullable)
+  - following_id (uuid, not nullable)
+  - status (text, not nullable)
+  - created_at (timestamp with time zone, not nullable)
+  - updated_at (timestamp with time zone, not nullable)
+Primary Key:
+  - id
+---
+
+## Table: meet_attendees
+Columns:
+  - meet_id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - created_at (timestamp with time zone, nullable)
+Primary Key:
+  - meet_id
+  - user_id
+---
+
+## Table: meet_comments
+Columns:
+  - id (uuid, not nullable)
+  - meet_id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - text (text, not nullable)
+  - parent_id (uuid, nullable)
+  - likes (integer, nullable)
+  - created_at (timestamp with time zone, nullable)
+  - updated_at (timestamp with time zone, nullable)
+  - replies (jsonb, nullable)
+  - timestamp (timestamp with time zone, nullable)
+Primary Key:
+  - id
+---
+
+## Table: meets
+Columns:
+  - id (uuid, not nullable)
+  - organizer_id (uuid, not nullable)
+  - title (text, not nullable)
+  - description (text, nullable)
+  - date (timestamp with time zone, not nullable)
+  - location (jsonb, not nullable)
+  - type (text, not nullable)
+  - capacity (integer, not nullable)
+  - rules (ARRAY, nullable)
+  - tags (ARRAY, nullable)
+  - cover_image (text, nullable)
+  - photos (ARRAY, nullable)
+  - attendees (ARRAY, nullable)
+  - is_premium (boolean, nullable)
+  - created_at (timestamp with time zone, nullable)
+  - updated_at (timestamp with time zone, nullable)
+  - address (text, nullable)
+  - vehicle_type (text, nullable)
+  - route_type (text, nullable)
+  - primary_route_id (uuid, nullable)
+  - status (text, not nullable)
+Primary Key:
+  - id
+---
+
+## Table: routes
+Columns:
+  - id (uuid, not nullable)
+  - meet_id (uuid, nullable)
+  - creator_id (uuid, not nullable)
+  - title (text, not nullable)
+  - description (text, nullable)
+  - route_data (jsonb, not nullable)
+  - distance (numeric, nullable)
+  - estimated_time (integer, nullable)
+  - difficulty (text, nullable)
+  - created_at (timestamp with time zone, nullable)
+  - updated_at (timestamp with time zone, nullable)
+Primary Key:
+  - id
+---
+
+## Table: user_activities
+Columns:
+  - id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - type (text, not nullable)
+  - title (text, not nullable)
+  - description (text, not nullable)
+  - timestamp (timestamp with time zone, not nullable)
+  - created_at (timestamp with time zone, not nullable)
+  - updated_at (timestamp with time zone, not nullable)
+Primary Key:
+  - id
+---
+
+## Table: users
+Columns:
+  - id (uuid, not nullable)
+  - email (text, not nullable)
+  - profile (jsonb, not nullable)
+  - vehicles (ARRAY, nullable)
+  - friends (ARRAY, nullable)
+  - is_premium (boolean, nullable)
+  - created_at (timestamp with time zone, nullable)
+  - updated_at (timestamp with time zone, nullable)
+  - isPremium (boolean, nullable)
+  - achievements (jsonb, nullable)
+  - preferences (jsonb, nullable)
+Primary Key:
+  - id
+  - id
+---
+
+## Table: vendors
+Columns:
+  - id (uuid, not nullable)
+  - user_id (uuid, not nullable)
+  - business_name (text, not nullable)
+  - services (ARRAY, nullable)
+  - products (ARRAY, nullable)
+  - ratings (ARRAY, nullable)
+  - meets (ARRAY, nullable)
+  - created_at (timestamp with time zone, nullable)
+  - updated_at (timestamp with time zone, nullable)
+Primary Key:
+  - id
+---
+
+Disconnected from database

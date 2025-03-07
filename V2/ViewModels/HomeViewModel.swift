@@ -3,92 +3,170 @@ import Combine
 import CoreLocation
 import MapKit
 
+@MainActor
 class HomeViewModel: ObservableObject {
-    @Published var selectedTab: Int = 0
-    @Published var meets: [Meet] = []
+    @Published var upcomingMeets: [Meet] = []
+    @Published var recommendedMeets: [Meet] = []
+    @Published var nearbyMeets: [Meet] = []
     @Published var isLoading: Bool = false
-    @Published var error: Error? = nil
+    @Published var errorMessage: String? = nil
+    @Published var unreadNotificationsCount: Int = 0
+    @Published var searchQuery: String = ""
     
     private var cancellables = Set<AnyCancellable>()
+    private let supabaseService: SupabaseService
     
-    init() {
-        loadMeets()
+    // Computed properties for filtered results
+    var filteredUpcomingMeets: [Meet] {
+        if searchQuery.isEmpty {
+            return upcomingMeets
+        }
+        return upcomingMeets.filter { meet in
+            meet.title.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.description.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.locationName.localizedCaseInsensitiveContains(searchQuery)
+        }
     }
     
-    func loadMeets() {
-        isLoading = true
+    var filteredRecommendedMeets: [Meet] {
+        if searchQuery.isEmpty {
+            return recommendedMeets
+        }
+        return recommendedMeets.filter { meet in
+            meet.title.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.description.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.locationName.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
+    var filteredNearbyMeets: [Meet] {
+        if searchQuery.isEmpty {
+            return nearbyMeets
+        }
+        return nearbyMeets.filter { meet in
+            meet.title.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.description.localizedCaseInsensitiveContains(searchQuery) ||
+            meet.locationName.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+    
+    init(supabaseService: SupabaseService = .shared) {
+        self.supabaseService = supabaseService
         
-        // Replace this with your actual API call
-        // This is a placeholder implementation
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
+        // Set up search debounce
+        $searchQuery
+            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // This helps prevent too many UI updates while typing
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+        
+        // Start fetching data
+        fetchData()
+        
+        // Fetch notifications in a separate task
+        Task {
+            await fetchUnreadNotificationsCount()
+        }
+    }
+    
+    func fetchData() {
+        Task {
+            // Explicitly switch to main thread for UI property updates
+            await MainActor.run {
+                isLoading = true
+            }
             
-            self.meets = [
-                Meet(
-                    id: "1",
-                    title: "Morning Run",
-                    description: "Easy run through the park",
-                    date: Date(),
-                    location: CLLocationCoordinate2D(latitude: 40.7829, longitude: -73.9654),
-                    address: "Central Park, New York, NY",
-                    type: .car,
-                    coverImage: "https://example.com/central-park.jpg",
-                    rules: ["No speeding", "Follow park rules"],
-                    tags: ["Morning", "Park", "Cars"],
-                    capacity: 20,
-                    creatorId: "user1",
-                    vehicleType: .car,
-                    routeType: .city
-                ),
-                Meet(
-                    id: "2",
-                    title: "Hill Training",
-                    description: "Hard hill repeats",
-                    date: Date().addingTimeInterval(86400),
-                    location: CLLocationCoordinate2D(latitude: 40.6602, longitude: -73.9790),
-                    address: "Prospect Park, Brooklyn, NY",
-                    type: .bike,
-                    coverImage: "https://example.com/prospect-park.jpg",
-                    rules: ["Helmets required", "Stay on trails"],
-                    tags: ["Hills", "Training", "Bikes"],
-                    capacity: 15,
-                    creatorId: "user2",
-                    vehicleType: .bike,
-                    routeType: .mountain
-                ),
-                Meet(
-                    id: "3",
-                    title: "Trail Adventure",
-                    description: "Exploring new trails",
-                    date: Date().addingTimeInterval(172800),
-                    location: CLLocationCoordinate2D(latitude: 40.7829, longitude: -73.9654),
-                    address: "Forest Park, Queens, NY",
-                    type: .mixed,
-                    coverImage: "https://example.com/forest-park.jpg",
-                    rules: ["Bring water", "Stay together"],
-                    tags: ["Trails", "Adventure", "Mixed"],
-                    capacity: 25,
-                    creatorId: "user1",
-                    vehicleType: .both,
-                    routeType: .scenic
-                )
-            ]
-            self.isLoading = false
+            do {
+                let meets = try await supabaseService.fetchMeets()
+                
+                // Filter and sort meets into categories
+                let currentDate = Date()
+                
+                // Explicitly switch to main thread for UI updates
+                await MainActor.run {
+                    self.upcomingMeets = meets
+                        .filter { $0.date > currentDate }
+                        .sorted { $0.date < $1.date }
+                    
+                    // For demo purposes, just assign all meets to each category
+                    // In a real app, you would have more complex logic here
+                    self.recommendedMeets = meets
+                        .sorted { $0.attendees.count > $1.attendees.count }
+                    
+                    self.nearbyMeets = meets // In a real app, filter by distance to user
+                    
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    func refresh() async {
+        // Explicitly use MainActor.run to ensure we're on the main thread
+        // even if this method is called from a background context
+        await MainActor.run {
+            isLoading = true
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
+        do {
+            let meets = try await supabaseService.fetchMeets()
+            
+            // Filter and sort meets into categories
+            let currentDate = Date()
+            
+            // Explicitly switch to main thread for UI updates
+            await MainActor.run {
+                self.upcomingMeets = meets
+                    .filter { $0.date > currentDate }
+                    .sorted { $0.date < $1.date }
+                
+                self.recommendedMeets = meets
+                    .sorted { $0.attendees.count > $1.attendees.count }
+                
+                self.nearbyMeets = meets
+                
+                self.isLoading = false
+            }
+            
+            // Also refresh the notification count
+            await fetchUnreadNotificationsCount()
+        } catch {
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+                self.isLoading = false
+            }
+        }
     }
     
-    @MainActor
-    func refresh() async {
-        isLoading = true
-        // Simulate a network request
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-        loadMeets()
+    func attendMeet(_ meet: Meet) {
+        // Implement logic to attend a meet
     }
     
-    // Computed property for unread notifications count
-    var unreadNotificationsCount: Int {
-        return 3 // Placeholder value - replace with actual logic
+    func leaveMeet(_ meet: Meet) {
+        // Implement logic to leave a meet
+    }
+    
+    func createMeet(_ meet: Meet) async throws {
+        // Fix for incorrect parameter label
+        let _ = try await supabaseService.createMeet(meet)
+        await refresh()
+    }
+    
+    func fetchUnreadNotificationsCount() async {
+        do {
+            let count = try await supabaseService.getUnreadNotificationsCount()
+            // Update directly on the main thread since we're in a @MainActor class
+            self.unreadNotificationsCount = count
+        } catch {
+            print("Error fetching unread notification count: \(error)")
+            // Keep the current count if there's an error
+        }
     }
 } 

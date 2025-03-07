@@ -1,0 +1,7 @@
+The following changes need to be made to fix the StatusBadge issues:
+
+1. Edit V2/Views/Meetups/MeetDetailView.swift:
+   - Delete the entire StatusBadge struct definition (lines ~340-366)
+   - Update any references to use the shared StatusBadge component
+
+2. Ensure all imports in MeetDetailView.swift include the local Components if needed 

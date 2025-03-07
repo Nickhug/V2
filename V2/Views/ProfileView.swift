@@ -69,8 +69,11 @@ struct ProfileView: View {
                 .environmentObject(AuthManager())
         }
         .sheet(isPresented: $showingFriends) {
-            FriendsManagementView()
-                .environmentObject(AuthManager())
+            NavigationView {
+                FriendsView()
+                    .environmentObject(AuthManager())
+                    .navigationBarTitleDisplayMode(.inline)
+            }
         }
         .alert("Log Out", isPresented: $showingLogoutConfirmation) {
             Button(role: .cancel) {
@@ -183,9 +186,7 @@ struct ProfileView: View {
                     )
             }
             
-            Button {
-                showingFriends = true
-            } label: {
+            NavigationLink(destination: FindFriendsView()) {
                 Text("Find Friends")
                     .font(.subheadline)
                     .fontWeight(.semibold)

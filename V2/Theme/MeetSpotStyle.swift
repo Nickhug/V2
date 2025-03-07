@@ -209,10 +209,34 @@ struct MeetSpotAnimation {
     static let easeInOut = SwiftUI.Animation.easeInOut(duration: 0.3)
 }
 
-// MARK: - Shadow
+// MARK: - Shadow Styles
+
 struct MeetSpotShadow {
-    static let shadowColor = Color.black.opacity(0.25)
-    static let shadowRadius: CGFloat = 10
+    var color: Color
+    var radius: CGFloat
+    var x: CGFloat
+    var y: CGFloat
+    
+    static let subtleShadow = MeetSpotShadow(
+        color: .black.opacity(0.1),
+        radius: 4,
+        x: 0,
+        y: 2
+    )
+    
+    static let mediumShadow = MeetSpotShadow(
+        color: .black.opacity(0.15),
+        radius: 6,
+        x: 0,
+        y: 3
+    )
+    
+    static let pronouncedShadow = MeetSpotShadow(
+        color: .black.opacity(0.2),
+        radius: 10,
+        x: 0,
+        y: 5
+    )
 }
 
 // MARK: - Extensions
@@ -225,7 +249,9 @@ extension View {
                     RoundedRectangle(cornerRadius: cornerRadius)
                         .fill(Material.ultraThinMaterial)
                 )
-                .shadow(color: MeetSpotShadow.shadowColor, radius: MeetSpotShadow.shadowRadius)
+                .shadow(color: MeetSpotShadow.pronouncedShadow.color, radius: MeetSpotShadow.pronouncedShadow.radius)
         )
     }
+    
+    // Shadow extensions have been moved to ViewExtensions.swift
 } 
