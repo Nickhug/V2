@@ -428,14 +428,44 @@ class AuthManager: NSObject, ObservableObject {
         isLoading = false
     }
     
-    func signOut() async {
+    func signOut() async throws {
+        isLoading = true
+        
+        defer {
+            isLoading = false
+        }
+        
         do {
             try await supabase.auth.signOut()
-            self.currentUser = nil
+            
+            // Update the authentication state
             self.isAuthenticated = false
+            self.currentUser = nil
+            print("Successfully signed out")
         } catch {
-            self.error = .unknown
-            print("Error signing out: \(error)")
+            print("Error signing out: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    func updateUserProfile(_ user: User) async throws {
+        isLoading = true
+        
+        defer {
+            isLoading = false
+        }
+        
+        do {
+            try await supabase
+                .from("users")
+                .update(user)
+                .eq("id", value: user.id)
+                .execute()
+            
+            print("Successfully updated user profile")
+        } catch {
+            print("Error updating user profile: \(error.localizedDescription)")
+            throw error
         }
     }
     

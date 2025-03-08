@@ -93,16 +93,23 @@ class ProfileViewModel: ObservableObject {
     func deleteVehicle(at indexSet: IndexSet) async {
         isLoading = true
         
-        var updatedUser = authManager.currentUser!
-        updatedUser.vehicles.remove(atOffsets: indexSet)
-        await authManager.updateProfile(updatedUser)
+        do {
+            var updatedUser = authManager.currentUser!
+            updatedUser.vehicles.remove(atOffsets: indexSet)
+            await authManager.updateProfile(updatedUser)
+        }
         
         isLoading = false
     }
     
     func signOut() async {
         isLoading = true
-        await authManager.signOut()
+        do {
+            try await authManager.signOut()
+        } catch {
+            // Handle the error appropriately
+            print("Error signing out: \(error)")
+        }
         isLoading = false
     }
 } 

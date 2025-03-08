@@ -65,7 +65,7 @@ struct ProfileView: View {
                 .environmentObject(AuthManager())
         }
         .sheet(isPresented: $showingAchievements) {
-            AchievementsView()
+            AchievementsGridView()
                 .environmentObject(AuthManager())
         }
         .sheet(isPresented: $showingFriends) {
@@ -337,26 +337,79 @@ struct ProfileView: View {
                 .foregroundColor(.white)
                 .padding(.top, 8)
             
-            if !viewModel.recentAchievements.isEmpty {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
-                    ForEach(viewModel.recentAchievements) { achievement in
-                        AchievementGridItem(achievement: achievement)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Achievements")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        showingAchievements = true
+                    }) {
+                        Text("See All")
+                            .font(.subheadline)
+                            .foregroundColor(.blue)
                     }
                 }
-            } else {
-                VStack(spacing: 12) {
-                    Image(systemName: "trophy.fill")
-                        .font(.system(size: 32))
-                        .foregroundColor(.white.opacity(0.6))
-                    
-                    Text("No achievements yet")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
-                        .multilineTextAlignment(.center)
+                
+                if !(viewModel.currentUser?.achievements.isEmpty ?? true) {
+                    VStack(spacing: 15) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 15) {
+                                ForEach(Array((viewModel.currentUser?.achievements.prefix(3)) ?? [])) { achievement in
+                                    AchievementGridItem(achievement: achievement)
+                                        .onTapGesture {
+                                            showingAchievements = true
+                                        }
+                                }
+                            }
+                        }
+                        
+                        // Progress bar
+                        if (viewModel.currentUser?.achievements.count ?? 0) > 0 {
+                            VStack(spacing: 5) {
+                                GeometryReader { geometry in
+                                    ZStack(alignment: .leading) {
+                                        // Background
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.gray.opacity(0.2))
+                                            .frame(height: 6)
+                                        
+                                        // Progress
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.blue)
+                                            .frame(width: min(CGFloat(viewModel.currentUser?.achievements.count ?? 0) / 11.0 * geometry.size.width, geometry.size.width), height: 6)
+                                    }
+                                }
+                                .frame(height: 6)
+                                
+                                HStack {
+                                    Text("\((viewModel.currentUser?.achievements.count ?? 0)/11) achievements")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Spacer()
+                                }
+                            }
+                            .padding(.top, 5)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Text("No achievements yet")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 30)
             }
+            .padding()
+            .background(Color(.systemGray6).opacity(0.5))
+            .cornerRadius(10)
+            .padding(.horizontal)
         }
     }
     
@@ -546,31 +599,34 @@ struct AchievementGridItem: View {
     let achievement: Achievement
     
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: achievement.icon)
-                .font(.title3)
-                .foregroundColor(Theme.Colors.accent)
-                .frame(width: 32, height: 32)
-                .background(Color.white.opacity(0.1))
-                .clipShape(Circle())
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(achievement.title)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+        VStack(alignment: .center, spacing: 5) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        gradient: Gradient(colors: [.blue.opacity(0.6), .purple.opacity(0.6)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 40, height: 40)
                 
-                Text(achievement.earnedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.6))
-                    .lineLimit(1)
+                Image(systemName: achievement.icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
             }
+            
+            Text(achievement.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(width: 80)
+            
+            Text(achievement.earnedAt, style: .relative)
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(12)
+        .frame(width: 80)
+        .padding(.vertical, 5)
     }
 }
 

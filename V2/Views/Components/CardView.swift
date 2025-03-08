@@ -31,7 +31,7 @@ struct CardView<Content: View>: View {
         content
             .aspectRatio(aspectRatio, contentMode: .fill)
             .clipShape(RoundedRectangle(cornerRadius: style == .featured ? Theme.CornerRadius.large : Theme.CornerRadius.medium))
-            .if(hasGradientOverlay) { view in
+            .ifCardView(hasGradientOverlay) { view in
                 view.overlay(
                     LinearGradient(
                         colors: [
@@ -44,13 +44,13 @@ struct CardView<Content: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: style == .featured ? Theme.CornerRadius.large : Theme.CornerRadius.medium))
                 )
             }
-            .if(style == .glass) { view in
+            .ifCardView(style == .glass) { view in
                 view.modifier(GlassEffect())
             }
-            .if(style == .featured) { view in
+            .ifCardView(style == .featured) { view in
                 view.modifier(FeaturedEffect())
             }
-            .if(style == .regular) { view in
+            .ifCardView(style == .regular) { view in
                 view.modifier(RegularEffect())
             }
             .scaleEffect(isInteractive ? 0.98 : 1)
@@ -116,5 +116,17 @@ private struct RegularEffect: ViewModifier {
                 x: 0,
                 y: 8
             )
+    }
+}
+
+// Extension for conditional view modifiers specific to CardView
+extension View {
+    @ViewBuilder
+    func ifCardView<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
     }
 } 

@@ -75,8 +75,14 @@ struct AuthView: View {
                                 Text(showSignUp ? "Create Account" : "Sign In")
                                 
                                 if authManager.isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    // Simple Circle-based spinner animation
+                                    Circle()
+                                        .trim(from: 0, to: 0.7)
+                                        .stroke(Color.white, lineWidth: 2)
+                                        .frame(width: 20, height: 20)
+                                        .rotationEffect(Angle(degrees: 270))
+                                        .rotationEffect(Angle(degrees: authManager.isLoading ? 360 : 0))
+                                        .animation(Animation.linear(duration: 1).repeatForever(autoreverses: false), value: authManager.isLoading)
                                         .padding(.leading, 8)
                                 }
                             }

@@ -12,117 +12,73 @@ struct MeetCard: View {
     }
     
     var body: some View {
-        Button(action: { onTap?() }) {
+        Button(action: {
+            if let onTap = onTap {
+                onTap()
+            }
+        }) {
+            // Simplified card layout
             VStack(alignment: .leading, spacing: 0) {
-                // Cover Image
-                AsyncImageView(imageName: meet.coverImage)
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 150)
-                    .clipShape(UnevenRoundedRectangle(cornerRadii: .init(
-                        topLeading: 16, bottomLeading: 0,
-                        bottomTrailing: 0, topTrailing: 16
-                    )))
-                    .overlay(
-                        VStack {
-                            HStack {
-                                Spacer()
-                                AnimatedStatusBadge(status: meet.status, size: .small)
-                                    .padding(10)
-                            }
-                            
-                            Spacer()
-                            HStack {
-                                Text(meet.type.rawValue)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(meet.type.color)
-                                    .foregroundColor(.white)
-                                    .clipShape(Capsule())
-                            }
-                            .padding(10)
-                        }
-                    )
+                // Cover image
+                if !meet.coverImage.isEmpty {
+                    AsyncImageView(imageName: meet.coverImage, downsample: true)
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 150)
+                        .clipShape(Rectangle())
+                } else {
+                    // Fallback image
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 150)
+                }
                 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(meet.title)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                            .foregroundColor(style == .light ? .primary : .white)
-                        
-                        Spacer()
-                        
-                        if meet.isPremium {
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.yellow)
-                                .font(.caption)
-                        }
-                    }
+                // Card content
+                VStack(alignment: .leading, spacing: 8) {
+                    // Title
+                    Text(meet.title)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
                     
+                    // Status
+                    Text(meet.status.displayName)
+                        .font(.caption)
+                        .foregroundColor(meet.status.color)
+                    
+                    // Date
                     HStack {
                         Image(systemName: "calendar")
-                            .foregroundColor(style == .light ? .secondary : .white.opacity(0.7))
-                        Text(meet.date.formatted(date: .abbreviated, time: .shortened))
-                            .font(.callout)
-                            .foregroundColor(style == .light ? .secondary : .white.opacity(0.7))
+                        Text(meet.formattedDate)
                     }
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.7))
                     
-                    Divider()
-                        .background(style == .light ? Color.secondary : Color.white.opacity(0.2))
-                    
-                    HStack {
-                        Image(systemName: "person.3.fill")
-                            .foregroundColor(style == .light ? .secondary : .white.opacity(0.7))
-                        Text("\(meet.attendees.count) attending")
-                            .font(.callout)
-                            .foregroundColor(style == .light ? .secondary : .white.opacity(0.7))
-                        
-                        Spacer()
-                        
-                        if let onJoin = onJoin, meet.status.allowsInteraction {
-                            Button(action: onJoin) {
-                                Text("Join")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(DesignSystem.Colors.accentGradient)
-                                    .clipShape(Capsule())
-                            }
-                        } else if !meet.status.allowsInteraction {
-                            // If meet is not joinable, show status instead
-                            HStack(spacing: 4) {
-                                Image(systemName: meet.status.icon)
-                                    .font(.caption)
-                                Text(meet.status.displayName)
-                                    .font(.caption)
-                            }
-                            .foregroundColor(meet.status.color)
-                        } else {
-                            // Host Avatar
-                            Circle()
-                                .fill(Color.gray.opacity(0.3))
-                                .frame(width: 24, height: 24)
-                                .overlay(
-                                    Text("H")
-                                        .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.white)
-                                )
+                    // Join button if applicable
+                    if let onJoin = onJoin, meet.status.allowsInteraction {
+                        Button(action: onJoin) {
+                            Text("Join")
+                                .font(.subheadline)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
                         }
+                        .buttonStyle(BorderlessButtonStyle())
+                        .padding(.top, 4)
                     }
                 }
-                .padding()
+                .padding(12)
             }
-            .background(style == .light ? Color(.secondarySystemBackground) : Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 3)
-            .opacity(meet.status == .canceled ? 0.7 : 1.0) // Dim canceled meets
+            .background(Color.black.opacity(0.3))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(BorderlessButtonStyle())
     }
 }
 

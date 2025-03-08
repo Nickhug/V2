@@ -510,7 +510,7 @@ struct RouteEditorView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                 )
-                .placeholder(when: title.isEmpty) {
+                .viewPlaceholder(when: title.isEmpty) {
                     Text("Enter route title")
                         .foregroundColor(.gray.opacity(0.7))
                         .font(.headline)

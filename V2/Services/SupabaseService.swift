@@ -181,7 +181,10 @@ class SupabaseService {
         }
         
         let result = try await query.execute()
-        return try JSONDecoder().decode([Meet].self, from: result.data)
+        
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Meet].self, from: result.data)
     }
     
     func createMeet(_ meet: Meet) async throws -> Meet {
@@ -192,7 +195,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(Meet.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(Meet.self, from: result.data)
     }
     
     func joinMeet(meetId: UUID, userId: UUID, vehicleId: UUID) async throws -> MeetParticipant {
@@ -210,7 +215,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(MeetParticipant.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(MeetParticipant.self, from: result.data)
     }
     
     func leaveMeet(meetId: UUID, userId: UUID) async throws {
@@ -239,7 +246,9 @@ class SupabaseService {
             .order("created_at")
             .execute()
         
-        return try JSONDecoder().decode([ChatMessage].self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([ChatMessage].self, from: result.data)
     }
     
     func sendMessage(_ message: ChatMessage) async throws -> ChatMessage {
@@ -250,7 +259,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(ChatMessage.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(ChatMessage.self, from: result.data)
     }
     
     // MARK: - Real-time subscriptions
@@ -456,7 +467,9 @@ class SupabaseService {
             .select("*")
             .execute()
         
-        return try JSONDecoder().decode([Route].self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Route].self, from: result.data)
     }
     
     func fetchRoutesByCreator() async throws -> [Route] {
@@ -469,7 +482,9 @@ class SupabaseService {
             .eq("creator_id", value: userId)
             .execute()
         
-        return try JSONDecoder().decode([Route].self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Route].self, from: result.data)
     }
     
     func fetchRoutesByMeet(meetId: String) async throws -> [Route] {
@@ -479,7 +494,9 @@ class SupabaseService {
             .eq("meet_id", value: meetId)
             .execute()
         
-        return try JSONDecoder().decode([Route].self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Route].self, from: result.data)
     }
     
     func fetchRoute(id: String) async throws -> Route {
@@ -490,7 +507,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(Route.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(Route.self, from: result.data)
     }
     
     func createRoute(_ route: Route) async throws -> Route {
@@ -501,7 +520,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(Route.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(Route.self, from: result.data)
     }
     
     func updateRoute(_ route: Route) async throws -> Route {
@@ -513,7 +534,9 @@ class SupabaseService {
             .single()
             .execute()
         
-        return try JSONDecoder().decode(Route.self, from: result.data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(Route.self, from: result.data)
     }
     
     func deleteRoute(id: String) async throws {
@@ -569,8 +592,19 @@ class SupabaseService {
                 return array.count
             }
             return 0
+        } catch let error as PostgrestError {
+            // Silently handle the "relation does not exist" error
+            if error.code == "42P01" {
+                // Notifications table doesn't exist yet - just return 0
+                return 0
+            }
+            
+            // For other Postgrest errors, log with a simpler message
+            print("Could not retrieve notifications count: \(error.code ?? "unknown")")
+            return 0 // Return 0 instead of throwing to prevent UI issues
         } catch {
-            print("Error counting unread notifications: \(error)")
+            // For other errors, log a simpler message without the full error
+            print("Error with notifications count")
             return 0 // Return 0 instead of throwing to prevent UI issues
         }
     }

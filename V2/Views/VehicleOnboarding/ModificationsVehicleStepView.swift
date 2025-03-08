@@ -63,7 +63,7 @@ struct ModificationsVehicleStepView: View {
                         // Add new modification field
                         HStack {
                             TextField("", text: $newModification)
-                                .placeholder(when: newModification.isEmpty) {
+                                .viewPlaceholder(when: newModification.isEmpty) {
                                     Text("Type a modification...").foregroundColor(.white.opacity(0.3))
                                 }
                                 .foregroundColor(.white)

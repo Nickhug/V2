@@ -174,7 +174,7 @@ struct WelcomeStepView: View {
 }
 
 // Make FeatureCard more compact
-struct FeatureCard: View {
+private struct FeatureCard: View {
     let icon: String
     let title: String
     let description: String

@@ -5,4 +5,5 @@ public enum VehicleType: String, Codable, CaseIterable {
     case car
     case bike
     case both
+    case mixed
 } 

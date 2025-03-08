@@ -19,7 +19,7 @@ struct GlassmorphicComponents {
                     .animation(.spring(), value: isFocused)
                 
                 SwiftUI.TextField("", text: $text)
-                    .placeholder(when: text.isEmpty) {
+                    .viewPlaceholder(when: text.isEmpty) {
                         Text(placeholder).foregroundColor(.white.opacity(0.3))
                     }
                     .foregroundColor(.white)

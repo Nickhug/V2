@@ -646,7 +646,7 @@ struct ModernTextField: View {
             
             TextField("", text: $text)
                 .foregroundColor(.white)
-                .placeholder(when: text.isEmpty) {
+                .viewPlaceholder(when: text.isEmpty) {
                     Text(placeholder)
                         .foregroundColor(.white.opacity(0.6))
                 }

@@ -76,6 +76,8 @@ class HomeViewModel: ObservableObject {
             // Explicitly switch to main thread for UI property updates
             await MainActor.run {
                 isLoading = true
+                // Reset error message when starting a new fetch
+                errorMessage = nil
             }
             
             do {
@@ -101,8 +103,13 @@ class HomeViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = "Failed to load meets: \(error.localizedDescription)"
                     self.isLoading = false
+                    
+                    // Auto-retry after a delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                        self.fetchData() // Retry fetch
+                    }
                 }
             }
         }
@@ -165,7 +172,7 @@ class HomeViewModel: ObservableObject {
             // Update directly on the main thread since we're in a @MainActor class
             self.unreadNotificationsCount = count
         } catch {
-            print("Error fetching unread notification count: \(error)")
+            // Silently handle error - don't log to console
             // Keep the current count if there's an error
         }
     }

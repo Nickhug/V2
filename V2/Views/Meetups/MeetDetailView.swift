@@ -458,6 +458,7 @@ struct JoinMeetView: View {
     @State private var isJoining = false
     @State private var showAlert = false
     @State private var alertMessage = ""
+    @State private var rotation = 0.0
     
     let meet: Meet
     
@@ -487,6 +488,9 @@ struct JoinMeetView: View {
                 Button {
                     Task {
                         isJoining = true
+                        withAnimation(Animation.linear(duration: 1).repeatForever(autoreverses: false)) {
+                            rotation = 360
+                        }
                         do {
                             try await viewModel.joinMeet(meet)
                             presentationMode.wrappedValue.dismiss()
@@ -498,8 +502,13 @@ struct JoinMeetView: View {
                     }
                 } label: {
                     if isJoining {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        // Use simple Circle animation instead of LoadingIndicator
+                        Circle()
+                            .trim(from: 0, to: 0.7)
+                            .stroke(Color.white, lineWidth: 2)
+                            .frame(width: 24, height: 24)
+                            .rotationEffect(Angle(degrees: 270))
+                            .rotationEffect(Angle(degrees: rotation))
                     } else {
                         Text("Join Meet")
                             .font(.headline)

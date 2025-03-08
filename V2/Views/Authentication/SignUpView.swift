@@ -3,344 +3,442 @@ import PhotosUI
 
 @available(iOS 16.0, *)
 struct SignUpView: View {
+    @ObservedObject var viewModel: AuthViewModel
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var authManager: AuthManager
-    @State private var email = ""
-    @State private var password = ""
-    @State private var confirmPassword = ""
-    @State private var name = ""
-    @State private var bio = ""
-    @State private var location = ""
+    @FocusState private var focusField: FocusField?
+    @State private var animateForm = false
     @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var currentStep = 0
     
-    // Photo selection states
-    @State private var selectedImage: PhotosPickerItem?
-    @State private var profileImage: UIImage?
-    @State private var isUploadingAvatar = false
+    // Move enum declaration out of the struct so it can be accessed by SignUpScrollContent
+    enum FocusField {
+        case email, password, confirmPassword, name
+    }
+    
+    // Create a binding that bridges between FocusState and regular Binding
+    private var focusFieldBinding: Binding<FocusField?> {
+        Binding(
+            get: { self.focusField },
+            set: { self.focusField = $0 }
+        )
+    }
     
     var body: some View {
         ZStack {
-            // Replace static background with animated gradient
+            // Background
             AnimatedGradientBackground()
             
-            GeometryReader { geometry in
-                VStack(spacing: 0) {
-                    // Progress bar
-                    ProgressView(value: Double(currentStep) / 2.0)
-                        .tint(.white)
-                        .padding()
-                    
-                    // Content
-                    TabView(selection: $currentStep) {
-                        // Step 1: Account Setup
-                        accountSetupView
-                            .tag(0)
-                        
-                        // Step 2: Profile Setup
-                        profileSetupView
-                            .tag(1)
-                        
-                        // Step 3: Final Setup
-                        finalSetupView
-                            .tag(2)
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut, value: currentStep)
-                    
-                    // Navigation buttons
-                    navigationButtons
-                }
+            // Content
+            SignUpScrollContent(
+                viewModel: viewModel,
+                focusField: focusFieldBinding,
+                animateForm: $animateForm,
+                isLoading: $isLoading
+            )
+        }
+        .alert(isPresented: $viewModel.showError) {
+            Alert(
+                title: Text("Error"),
+                message: Text(viewModel.error?.localizedDescription ?? "An unknown error occurred"),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .onAppear {
+            // Animate form elements
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
+                animateForm = true
             }
+            
+            // Set initial focus to email field after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                focusField = .email
+            }
+        }
+        // Add tap gesture to dismiss keyboard
+        .onTapGesture {
+            // Dismiss keyboard when tapping outside of input fields
+            focusField = nil
+        }
+    }
+}
+
+// Helper struct to break down the complex view
+struct SignUpScrollContent: View {
+    @ObservedObject var viewModel: AuthViewModel
+    @Binding var focusField: SignUpView.FocusField?
+    @Binding var animateForm: Bool
+    @Binding var isLoading: Bool
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 32) {
+                // Header with back button
+                headerView
+                
+                // Header text
+                titleView
+                
+                // Sign Up Form
+                signUpFormView
+                
+                // Social sign up options
+                socialLoginView
+            }
+            .padding(.horizontal)
         }
     }
     
-    private var accountSetupView: some View {
-        VStack(spacing: 24) {
-            Text("Create Your Account")
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .padding(.top, 40)
-            
-            VStack(spacing: 20) {
-                // Email input
-                FloatingTextField(
-                    placeholder: "Email",
-                    icon: "envelope.fill",
-                    text: $email
-                )
-                
-                // Password input
-                FloatingTextField(
-                    placeholder: "Password",
-                    icon: "lock.fill",
-                    text: $password,
-                    isSecure: true
-                )
-                
-                // Confirm Password input
-                FloatingTextField(
-                    placeholder: "Confirm Password",
-                    icon: "lock.shield.fill",
-                    text: $confirmPassword,
-                    isSecure: true
-                )
-                
-                // Password requirements
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Password must contain:")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    
-                    HStack(spacing: 5) {
-                        Image(systemName: password.count >= 8 ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(password.count >= 8 ? .green : .white.opacity(0.5))
-                        
-                        Text("At least 8 characters")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    
-                    HStack(spacing: 5) {
-                        Image(systemName: password.rangeOfCharacter(from: .decimalDigits) != nil ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(password.rangeOfCharacter(from: .decimalDigits) != nil ? .green : .white.opacity(0.5))
-                        
-                        Text("At least 1 number")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
+    private var headerView: some View {
+        HStack {
+            Button(action: {
+                withAnimation {
+                    viewModel.currentView = .welcome
                 }
-                .padding(.horizontal)
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.title3)
+                    .foregroundColor(.white)
+                    .padding(12)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
             }
-            .padding(.horizontal)
             
             Spacer()
         }
+        .padding(.horizontal)
+        .padding(.top, 20)
     }
     
-    private var profileSetupView: some View {
-        VStack(spacing: 24) {
-            Text("Your Profile")
-                .font(.title)
-                .fontWeight(.bold)
+    private var titleView: some View {
+        VStack(spacing: 16) {
+            Text("Create Account")
+                .font(.system(size: 32, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
-                .padding(.top, 40)
             
-            // Profile Image Selection
-            PhotosPicker(selection: $selectedImage, matching: .images) {
-                VStack {
-                    if let profileImage = profileImage {
-                        Image(uiImage: profileImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 120, height: 120)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.white, lineWidth: 4))
-                    } else {
-                        ZStack {
-                            Circle()
-                                .fill(Color.white.opacity(0.1))
-                                .frame(width: 120, height: 120)
-                            
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(.white)
-                            
-                            VStack {
-                                Spacer()
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 30))
-                                        .foregroundColor(.blue)
-                                        .background(Color.white)
-                                        .clipShape(Circle())
-                                }
-                            }
-                            .frame(width: 110, height: 110)
-                        }
-                    }
-                    
-                    Text("Add Profile Picture")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.top, 8)
-                }
-            }
-            .onChange(of: selectedImage) { oldValue, newValue in
-                Task {
-                    if let data = try? await newValue?.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
-                        await MainActor.run {
-                            profileImage = image
-                        }
-                    }
-                }
-            }
-            
-            VStack(spacing: 20) {
-                // Name input
-                FloatingTextField(
-                    placeholder: "Full Name",
-                    icon: "person.fill",
-                    text: $name
-                )
-                
-                // Bio input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Bio (Optional)")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
-                    
-                    TextEditor(text: $bio)
-                        .frame(height: 100)
-                        .padding()
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(12)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal)
-            }
-            .padding(.horizontal)
-            
-            Spacer()
+            Text("Join the community")
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.7))
         }
+        .padding(.bottom, 12)
     }
     
-    private var finalSetupView: some View {
-        VStack(spacing: 24) {
-            Text("Almost Done!")
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .padding(.top, 40)
+    private var signUpFormView: some View {
+        VStack(spacing: 20) {
+            // Email field
+            emailFieldView
             
-            VStack(spacing: 20) {
-                // Location input
-                FloatingTextField(
-                    placeholder: "Location (Optional)",
-                    icon: "location.fill",
-                    text: $location
-                )
-                
-                // Additional setup info
-                VStack(spacing: 16) {
-                    setupInfoRow(icon: "bell.fill", title: "Notifications", description: "Stay updated with meets and messages")
-                    setupInfoRow(icon: "car.fill", title: "Vehicle Setup", description: "Add your vehicles after signup")
-                    setupInfoRow(icon: "person.2.fill", title: "Find Friends", description: "Connect with other enthusiasts")
-                }
-                .padding(.top)
-            }
-            .padding(.horizontal)
+            // Name field
+            nameFieldView
             
-            Spacer()
+            // Password field
+            passwordFieldView
+            
+            // Password requirements
+            PasswordRequirementsView(password: viewModel.signupPassword)
+                .opacity(animateForm ? 1 : 0)
+                .offset(y: animateForm ? 0 : 20)
+            
+            // Confirm Password field
+            confirmPasswordFieldView
+            
+            // Sign Up button
+            signUpButtonView
         }
+        .padding(.horizontal, 24)
     }
     
-    private func setupInfoRow(icon: String, title: String, description: String) -> some View {
-        HStack(spacing: 15) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 40)
+    private var emailFieldView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Email")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.leading, 4)
             
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+            HStack {
+                Image(systemName: "envelope.fill")
+                    .foregroundColor(focusField == .email ? MeetSpotColors.pink500 : .white.opacity(0.5))
+                    .font(.system(size: 20))
+                    .frame(width: 36)
+                
+                TextField("", text: $viewModel.signupEmail)
+                    .viewPlaceholder(when: viewModel.signupEmail.isEmpty) {
+                        Text("Enter your email").foregroundColor(.white.opacity(0.3))
+                    }
+                    .keyboardType(.emailAddress)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .onTapGesture {
+                        focusField = .email
+                    }
+                    .foregroundColor(.white)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusField = .name
+                    }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Material.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        focusField == .email ? MeetSpotColors.pink500 : Color.white.opacity(0.1),
+                        lineWidth: focusField == .email ? 1.5 : 1
+                    )
+            )
+        }
+        .opacity(animateForm ? 1 : 0)
+        .offset(y: animateForm ? 0 : 20)
+    }
+    
+    private var nameFieldView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Full Name")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.leading, 4)
+            
+            HStack {
+                Image(systemName: "person.fill")
+                    .foregroundColor(focusField == .name ? MeetSpotColors.pink500 : .white.opacity(0.5))
+                    .font(.system(size: 20))
+                    .frame(width: 36)
+                
+                TextField("", text: $viewModel.onboardingState.name)
+                    .viewPlaceholder(when: viewModel.onboardingState.name.isEmpty) {
+                        Text("Enter your full name").foregroundColor(.white.opacity(0.3))
+                    }
+                    .autocapitalization(.words)
+                    .disableAutocorrection(false)
+                    .onTapGesture {
+                        focusField = .name
+                    }
+                    .foregroundColor(.white)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusField = .password
+                    }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Material.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        focusField == .name ? MeetSpotColors.pink500 : Color.white.opacity(0.1),
+                        lineWidth: focusField == .name ? 1.5 : 1
+                    )
+            )
+        }
+        .opacity(animateForm ? 1 : 0)
+        .offset(y: animateForm ? 0 : 20)
+    }
+    
+    private var passwordFieldView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Password")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.leading, 4)
+            
+            GenericPasswordField<SignUpView.FocusField>(
+                text: $viewModel.signupPassword,
+                placeholder: "Enter your password",
+                isFocused: focusField == .password,
+                onSubmit: {
+                    focusField = .confirmPassword
+                },
+                onFocusChange: { isFocused in
+                    if isFocused {
+                        focusField = .password
+                    }
+                }
+            )
+        }
+        .opacity(animateForm ? 1 : 0)
+        .offset(y: animateForm ? 0 : 20)
+    }
+    
+    private var confirmPasswordFieldView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Confirm Password")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+                .padding(.leading, 4)
+            
+            GenericPasswordField<SignUpView.FocusField>(
+                text: $viewModel.confirmPassword,
+                placeholder: "Confirm your password",
+                isFocused: focusField == .confirmPassword,
+                onSubmit: {
+                    focusField = nil
+                },
+                onFocusChange: { isFocused in
+                    if isFocused {
+                        focusField = .confirmPassword
+                    }
+                }
+            )
+        }
+        .opacity(animateForm ? 1 : 0)
+        .offset(y: animateForm ? 0 : 20)
+    }
+    
+    private var signUpButtonView: some View {
+        Button(action: {
+            isLoading = true
+            Task {
+                await viewModel.signUp()
+                isLoading = false
+            }
+        }) {
+            HStack {
+                if isLoading {
+                    // Simple Circle-based spinner animation
+                    Circle()
+                        .trim(from: 0, to: 0.7)
+                        .stroke(Color.white, lineWidth: 2)
+                        .frame(width: 20, height: 20)
+                        .rotationEffect(Angle(degrees: 270))
+                        .rotationEffect(Angle(degrees: isLoading ? 360 : 0))
+                        .animation(Animation.linear(duration: 1).repeatForever(autoreverses: false), value: isLoading)
+                        .padding(.trailing, 8)
+                }
+                
+                Text("Create Account")
                     .font(.headline)
                     .foregroundColor(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(
+                LinearGradient(
+                    gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(16)
+            .shadow(color: MeetSpotColors.pink500.opacity(0.3), radius: 10, x: 0, y: 5)
+        }
+        .disabled(isLoading || viewModel.signupEmail.isEmpty || viewModel.signupPassword.isEmpty || viewModel.confirmPassword.isEmpty || viewModel.onboardingState.name.isEmpty)
+        .opacity((isLoading || viewModel.signupEmail.isEmpty || viewModel.signupPassword.isEmpty || viewModel.confirmPassword.isEmpty || viewModel.onboardingState.name.isEmpty) ? 0.7 : 1)
+        .opacity(animateForm ? 1 : 0)
+        .offset(y: animateForm ? 0 : 20)
+        .padding(.top, 8)
+    }
+    
+    private var socialLoginView: some View {
+        VStack(spacing: 24) {
+            // Divider with "or"
+            HStack {
+                Line()
+                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    .frame(height: 1)
                 
-                Text(description)
-                    .font(.caption)
+                Text("or continue with")
+                    .font(.footnote)
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.horizontal, 10)
+                
+                Line()
+                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    .frame(height: 1)
+            }
+            .padding(.horizontal)
+            .opacity(animateForm ? 1 : 0)
+            
+            // Social login buttons
+            HStack(spacing: 20) {
+                SocialLoginButton(iconName: "apple.logo", color: .white, action: {})
+                SocialLoginButton(iconName: "envelope.fill", color: .white, action: {})
+                SocialLoginButton(iconName: "g.circle.fill", color: .white, action: {})
+            }
+            .opacity(animateForm ? 1 : 0)
+            
+            // Sign In link
+            HStack {
+                Text("Already have an account?")
                     .foregroundColor(.white.opacity(0.7))
-            }
-            
-            Spacer()
-        }
-        .padding()
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
-    }
-    
-    private var navigationButtons: some View {
-        HStack(spacing: 20) {
-            if currentStep > 0 {
-                Button {
-                    withAnimation {
-                        currentStep -= 1
-                    }
-                } label: {
-                    Text("Back")
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .frame(width: 100)
-                        .padding()
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(12)
+                    .font(.subheadline)
+                
+                Button(action: {
+                    viewModel.showLogin()
+                }) {
+                    Text("Sign In")
+                        .font(.subheadline.bold())
+                        .foregroundColor(MeetSpotColors.pink500)
                 }
             }
-            
-            Button {
-                if currentStep < 2 {
-                    withAnimation {
-                        currentStep += 1
-                    }
-                } else {
-                    createAccount()
-                }
-            } label: {
-                HStack {
-                    if isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .black))
-                    }
-                    Text(currentStep == 2 ? "Create Account" : "Next")
-                        .fontWeight(.bold)
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: currentStep == 0 ? .infinity : 100)
-                .padding()
-                .background(isStepValid ? Color.white : Color.white.opacity(0.5))
-                .cornerRadius(12)
-            }
-            .disabled(!isStepValid || isLoading)
+            .padding(.top, 8)
+            .opacity(animateForm ? 1 : 0)
         }
-        .padding()
+        .padding(.top, 20)
+        .padding(.bottom, 40)
+    }
+}
+
+struct PasswordRequirementsView: View {
+    let password: String
+    
+    private var hasMinimumLength: Bool {
+        password.count >= 8
     }
     
-    private var isStepValid: Bool {
-        switch currentStep {
-        case 0:
-            return !email.isEmpty && 
-                   !password.isEmpty && 
-                   password == confirmPassword && 
-                   password.count >= 8 && 
-                   email.contains("@") &&
-                   password.rangeOfCharacter(from: .decimalDigits) != nil
-        case 1:
-            return !name.isEmpty
-        case 2:
-            return true
-        default:
-            return false
-        }
+    private var hasUppercase: Bool {
+        password.contains(where: { $0.isUppercase })
     }
     
-    private func createAccount() {
-        isLoading = true
-        errorMessage = nil
-        
-        Task {
-            await authManager.signUp(email, password, name)
-            dismiss()
+    private var hasNumber: Bool {
+        password.contains(where: { $0.isNumber })
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PasswordRequirementRow(
+                text: "At least 8 characters",
+                isMet: hasMinimumLength
+            )
             
-            isLoading = false
+            PasswordRequirementRow(
+                text: "Contains uppercase letter",
+                isMet: hasUppercase
+            )
+            
+            PasswordRequirementRow(
+                text: "Contains number",
+                isMet: hasNumber
+            )
+        }
+        .padding(.leading, 40)
+        .padding(.top, 4)
+    }
+}
+
+struct PasswordRequirementRow: View {
+    let text: String
+    let isMet: Bool
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isMet ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(isMet ? MeetSpotColors.pink500 : .white.opacity(0.4))
+                .font(.system(size: 14))
+            
+            Text(text)
+                .font(.caption)
+                .foregroundColor(isMet ? .white.opacity(0.8) : .white.opacity(0.4))
         }
     }
 }
 
 #Preview {
-    SignUpView()
-        .environmentObject(AuthManager())
+    SignUpView(viewModel: AuthViewModel())
 } 

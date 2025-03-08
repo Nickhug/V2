@@ -49,50 +49,136 @@ struct StatusFilterView: View {
     }
 }
 
+// MARK: - Status Section Header View
+/// A subview for displaying the status section header
+struct StatusSectionHeaderView: View {
+    let status: MeetStatus
+    let count: Int
+    
+    var body: some View {
+        HStack {
+            Image(systemName: status.icon)
+                .foregroundColor(status.color)
+            
+            Text(status.displayName + " Meets")
+                .font(.headline)
+            
+            Spacer()
+            
+            Text("\(count)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(12)
+        }
+        .padding(.horizontal)
+    }
+}
+
+// MARK: - Status Meet Cards View
+/// A subview for displaying meet cards for a specific status
+struct StatusMeetCardsView: View {
+    let meets: [Meet]
+    let viewModel: MeetViewModel
+    @Binding var selectedMeet: Meet?
+    @Binding var showingMeetDetail: Bool
+    
+    var body: some View {
+        // Basic horizontal scroll with minimal modifiers
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(meets) { meet in
+                    MeetCard(
+                        meet: meet,
+                        onJoin: createOnJoinAction(for: meet),
+                        onTap: {
+                            selectedMeet = meet
+                            showingMeetDetail = true
+                        }
+                    )
+                    .frame(width: 300)
+                    .id(meet.id)
+                }
+                
+                // Simple end spacer
+                Color.clear
+                    .frame(width: 50, height: 50)
+            }
+            .padding(.horizontal)
+        }
+        .frame(height: 320)
+    }
+    
+    // Helper method to create the onJoin closure
+    private func createOnJoinAction(for meet: Meet) -> (() -> Void)? {
+        if meet.status.allowsInteraction {
+            return {
+                Task {
+                    try? await viewModel.joinMeet(meet)
+                }
+            }
+        } else {
+            return nil
+        }
+    }
+}
+
+// MARK: - Status Section View
+/// A subview for displaying a complete status section
+struct StatusSectionView: View {
+    let status: MeetStatus
+    let meets: [Meet]
+    let viewModel: MeetViewModel
+    @Binding var selectedMeet: Meet?
+    @Binding var showingMeetDetail: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            StatusSectionHeaderView(status: status, count: meets.count)
+            
+            StatusMeetCardsView(
+                meets: meets,
+                viewModel: viewModel,
+                selectedMeet: $selectedMeet,
+                showingMeetDetail: $showingMeetDetail
+            )
+        }
+        .padding(.vertical, 8)
+    }
+}
+
 /// A card layout view to show meets grouped by status
 struct MeetsByStatusView: View {
     @ObservedObject var viewModel: MeetViewModel
+    @State private var selectedMeet: Meet?
+    @State private var showingMeetDetail = false
     
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                // Use ForEach with simple content and extract complex views to subcomponents
                 ForEach(MeetStatus.allCases) { status in
                     if let meetsForStatus = viewModel.meetsByStatus[status], !meetsForStatus.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: status.icon)
-                                    .foregroundColor(status.color)
-                                
-                                Text(status.displayName + " Meets")
-                                    .font(.headline)
-                                
-                                Spacer()
-                                
-                                Text("\(meetsForStatus.count)")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.secondary.opacity(0.1))
-                                    .cornerRadius(12)
-                            }
-                            .padding(.horizontal)
-                            
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 16) {
-                                    ForEach(meetsForStatus) { meet in
-                                        MeetCard(meet: meet)
-                                            .frame(width: 300)
-                                    }
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                        .padding(.vertical, 8)
+                        StatusSectionView(
+                            status: status,
+                            meets: meetsForStatus,
+                            viewModel: viewModel,
+                            selectedMeet: $selectedMeet,
+                            showingMeetDetail: $showingMeetDetail
+                        )
                     }
                 }
             }
             .padding(.vertical)
+        }
+        .sheet(isPresented: $showingMeetDetail) {
+            if let meet = selectedMeet {
+                NavigationView {
+                    MeetDetailView(meet: meet, viewModel: viewModel)
+                }
+            }
         }
     }
 }

@@ -6,47 +6,185 @@ struct DashboardView: View {
     @EnvironmentObject private var authManager: AuthManager
     @SceneStorage("selectedTab") private var selectedTab = "home" // Persist tab selection
     
+    // Add pre-loading state management
+    @State private var hasAppeared = false
+    @State private var contentLoadingComplete = false
+    
+    // Add error state
+    @State private var errorMessage: String? = nil
+    
+    // Add state to control animations
+    @State private var isAnimating = false
+    
+    // Add state to track if view content is ready
+    @State private var viewsPreloaded = false
+    
+    // Add reference to background for pausing animations during transitions
+    @State private var backgroundPaused = true
+    
+    // New state to track previous tab for proper transitions
+    @State private var previousTab: String? = nil
+    
+    // New state to manage memory pressure
+    @State private var isMemoryConstrained = false
+    
+    // Add state to control rendering method
+    @State private var useMetalRendering = true
+    
+    // Environment values to disable animations completely
+    @Environment(\.displayScale) private var displayScale
+    
+    // Replace or add the relevant state declarations
+    @State private var isLoading = false // Ensure this doesn't need initialization
+    @State private var isLoadingAnimating = true // Add an animation state variable if needed
+    
     var body: some View {
         ZStack {
-            // Replace static background with animated gradient
-            AnimatedGradientBackground()
+            // Solid black background that's always visible
+            Color.black.ignoresSafeArea()
             
-            Group {
-                if authManager.isAuthenticated {
-                    TabView(selection: $selectedTab) {
-                        HomeView()
-                            .tabItem {
-                                Label("Home", systemImage: "house.fill")
-                            }
-                            .tag("home")
-                        
-                        ExploreView(viewModel: viewModel)
-                            .tabItem {
-                                Label("Explore", systemImage: "magnifyingglass")
-                            }
-                            .tag("explore")
-                        
-                        RoutesView()
-                            .environmentObject(routeViewModel)
-                            .tabItem {
-                                Label("Routes", systemImage: "map.fill")
-                            }
-                            .tag("routes")
-                        
-                        ProfileView(viewModel: viewModel)
-                            .tabItem {
-                                Label("Profile", systemImage: "person.fill")
-                            }
-                            .tag("profile")
+            // Standard TabView with simplified background handling
+            TabView(selection: $selectedTab) {
+                homeTab
+                    .tabItem {
+                        Label("Home", systemImage: "house.fill")
                     }
-                    .tint(.white)
-                } else {
-                    LoginView()
+                    .tag("home")
+                    .id("home-tab")
+                
+                ExploreView(viewModel: viewModel)
+                    .tabItem {
+                        Label("Explore", systemImage: "magnifyingglass")
+                    }
+                    .tag("explore")
+                    .id("explore-tab")
+                
+                RoutesView()
+                    .environmentObject(routeViewModel)
+                    .tabItem {
+                        Label("Routes", systemImage: "map.fill")
+                    }
+                    .tag("routes")
+                    .id("routes-tab")
+                
+                ProfileView(viewModel: viewModel)
+                    .tabItem {
+                        Label("Profile", systemImage: "person.fill")
+                    }
+                    .tag("profile")
+                    .id("profile-tab")
+            }
+            .accentColor(Theme.Colors.accent)
+            // Use a minimal transition animation
+            .transaction { transaction in
+                transaction.animation = Animation.linear(duration: 0.5)
+            }
+            .transition(.identity)
+            .animation(nil, value: selectedTab)
+            .compositingGroup()
+            .allowsHitTesting(contentLoadingComplete)
+        }
+        // Subscribe to memory pressure notifications
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            isMemoryConstrained = true
+            // Force cleanup of unused resources
+            cleanupUnusedResources()
+        }
+        .onAppear {
+            // Pre-load views and start animations
+            Task {
+                if !hasAppeared {
+                    hasAppeared = true
+                    await fetchData()
+                    
+                    // Signal for background to start
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("ResumeAnimatedBackgrounds"), 
+                        object: nil
+                    )
+                    
+                    contentLoadingComplete = true
+                    isAnimating = true
                 }
             }
         }
-        .environmentObject(viewModel)
-        .environmentObject(routeViewModel)
+        .onChange(of: selectedTab) { oldTab, newTab in
+            print("Tab changed from \(oldTab) to \(newTab)")
+            
+            // Store previous tab for reference
+            previousTab = oldTab
+            
+            // Cancel any in-progress animations or gestures
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            
+            // Temporarily pause background animations
+            NotificationCenter.default.post(name: NSNotification.Name("PauseAnimatedBackgrounds"), object: nil)
+            
+            // Clean up memory
+            if #available(iOS 15.0, *) {
+                Task {
+                    let _ = autoreleasepool { () -> Void in 
+                        URLCache.shared.removeAllCachedResponses()
+                    }
+                }
+            }
+            
+            // Resume animations after a brief pause
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(name: NSNotification.Name("ResumeAnimatedBackgrounds"), object: nil)
+            }
+        }
+    }
+    
+    private var homeTab: some View {
+        HomeView()
+            .environmentObject(viewModel)
+            // Use identity transition to prevent animation conflicts
+            .transition(.identity)
+    }
+    
+    private func fetchData() async {
+        do {
+            // Start all data loading operations with proper error handling
+            try await viewModel.fetchMeets()
+            await routeViewModel.fetchUserRoutes()
+            contentLoadingComplete = true
+            viewsPreloaded = true
+        } catch {
+            // Handle any errors gracefully
+            errorMessage = "Error loading data: \(error.localizedDescription)"
+            print("Error preloading dashboard content: \(error)")
+            
+            // Still mark content as loaded so UI is usable
+            contentLoadingComplete = true
+            viewsPreloaded = true
+        }
+    }
+    
+    // New function to clean up resources when memory is constrained
+    private func cleanupUnusedResources() {
+        // Pause background animations during cleanup
+        NotificationCenter.default.post(name: NSNotification.Name("PauseAnimatedBackgrounds"), object: nil)
+        
+        // Short delay before resuming animations
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.isMemoryConstrained = false
+            
+            // Resume animations
+            NotificationCenter.default.post(name: NSNotification.Name("ResumeAnimatedBackgrounds"), object: nil)
+        }
+    }
+}
+
+// Add conditional modifier extension
+extension View {
+    @ViewBuilder
+    func ifDashboardView<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
     }
 }
 
@@ -197,8 +335,14 @@ struct RSVPButton: View {
         } label: {
             HStack(spacing: 8) {
                 if isLoading {
-                    ProgressView()
-                        .tint(.white)
+                    // Pure SwiftUI loading indicator
+                    Circle()
+                        .trim(from: 0, to: 0.7)
+                        .stroke(Color.white, lineWidth: 2)
+                        .frame(width: 18, height: 18)
+                        .rotationEffect(Angle(degrees: 270))
+                        .rotationEffect(Angle(degrees: isLoading ? 360 : 0))
+                        .animation(Animation.linear(duration: 1).repeatForever(autoreverses: false), value: isLoading)
                 } else {
                     Image(systemName: isAttending ? "checkmark.circle.fill" : "plus.circle.fill")
                         .font(.system(size: 18))

@@ -63,6 +63,7 @@ struct BasicsVehicleStepView: View {
                             HStack(spacing: 12) {
                                 vehicleTypeButton(.car, icon: "car.fill", title: "Car")
                                 vehicleTypeButton(.bike, icon: "bicycle", title: "Bike")
+                                vehicleTypeButton(.mixed, icon: "car.and.bicycle", title: "Mixed")
                             }
                         }
                         .padding(.horizontal)

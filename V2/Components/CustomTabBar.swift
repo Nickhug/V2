@@ -25,47 +25,6 @@ enum Tab: Int {
     }
 }
 
-struct CustomTabBar: View {
-    @Binding var selectedTab: Tab
-    @Namespace private var namespace
-    
-    var body: some View {
-        HStack {
-            ForEach([Tab.discover, .vehicles, .profile, .settings], id: \.self) { tab in
-                VStack(spacing: 4) {
-                    Image(systemName: tab.icon)
-                        .font(.system(size: 20))
-                    
-                    Text(tab.title)
-                        .font(.caption2)
-                }
-                .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.5))
-                .padding(.vertical, 8)
-                .padding(.horizontal, 16)
-                .background(
-                    ZStack {
-                        if selectedTab == tab {
-                            DesignSystem.Colors.accentGradient
-                                .clipShape(Capsule())
-                                .matchedGeometryEffect(id: "tab", in: namespace)
-                        }
-                    }
-                )
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedTab = tab
-                    }
-                }
-            }
-        }
-        .padding(8)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-    }
-}
-
 struct MainTabView: View {
     @State private var selectedTab: Tab = .discover
     @StateObject private var discoverViewModel = DiscoverViewModel()
@@ -77,23 +36,43 @@ struct MainTabView: View {
             DesignSystem.Colors.backgroundGradient
                 .ignoresSafeArea()
             
-            // Content
-            VStack(spacing: 0) {
-                TabView(selection: $selectedTab) {
-                    DiscoverView(viewModel: discoverViewModel)
-                        .tag(Tab.discover)
-                    
-                    VehiclesView()
-                        .tag(Tab.vehicles)
-                    
-                    ProfileView(viewModel: meetViewModel)
-                        .tag(Tab.profile)
-                    
-                    SettingsView(meetViewModel: meetViewModel)
-                        .tag(Tab.settings)
-                }
+            // Standard iOS TabView with default styling
+            TabView(selection: $selectedTab) {
+                DiscoverView(viewModel: discoverViewModel)
+                    .tabItem {
+                        Label(Tab.discover.title, systemImage: Tab.discover.icon)
+                    }
+                    .tag(Tab.discover)
                 
-                CustomTabBar(selectedTab: $selectedTab)
+                VehiclesView()
+                    .tabItem {
+                        Label(Tab.vehicles.title, systemImage: Tab.vehicles.icon)
+                    }
+                    .tag(Tab.vehicles)
+                
+                ProfileView(viewModel: meetViewModel)
+                    .tabItem {
+                        Label(Tab.profile.title, systemImage: Tab.profile.icon)
+                    }
+                    .tag(Tab.profile)
+                
+                SettingsView(meetViewModel: meetViewModel)
+                    .tabItem {
+                        Label(Tab.settings.title, systemImage: Tab.settings.icon)
+                    }
+                    .tag(Tab.settings)
+            }
+            // No custom styling or modifications to the TabView
+        }
+        .onAppear {
+            // Preload data
+            Task {
+                do {
+                    await discoverViewModel.fetchMeets()
+                    try await meetViewModel.fetchMeets()
+                } catch {
+                    print("Error in preloading tab content: \(error)")
+                }
             }
         }
     }

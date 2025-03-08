@@ -369,6 +369,7 @@ struct VehicleTypeSelector: View {
         case .car: return "car.fill"
         case .bike: return "bicycle"
         case .both: return "car.fill" // Default icon for "both" type
+        case .mixed: return "car.and.bicycle" // Adding icon for "mixed" type
         }
     }
 }

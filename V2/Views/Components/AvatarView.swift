@@ -25,13 +25,25 @@ struct AvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .if(showBorder) { view in
+        .ifAvatarView(showBorder) { view in
             view.overlay(
                 Circle()
                     .strokeBorder(Theme.Colors.accent, lineWidth: 2)
             )
         }
         .shadow(color: Theme.shadowColor, radius: Theme.shadowRadius * 0.5)
+    }
+}
+
+// Extension for conditional view modifiers specific to AvatarView
+extension View {
+    @ViewBuilder
+    func ifAvatarView<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
     }
 }
 

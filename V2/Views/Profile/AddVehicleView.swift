@@ -83,6 +83,7 @@ struct AddVehicleView: View {
                 HStack(spacing: Theme.Spacing.medium) {
                     vehicleTypeButton(VehicleType.car, icon: "car.fill", title: "Car")
                     vehicleTypeButton(VehicleType.bike, icon: "bicycle", title: "Bike")
+                    vehicleTypeButton(VehicleType.mixed, icon: "car.and.bicycle", title: "Mixed")
                 }
                 
                 // Make input

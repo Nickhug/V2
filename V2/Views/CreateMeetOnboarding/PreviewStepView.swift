@@ -287,6 +287,7 @@ struct PreviewStepView: View {
         case .car: return "car.fill"
         case .bike: return "bicycle"
         case .both: return "car.fill" // Fallback to car icon for "both" type
+        case .mixed: return "car.and.bicycle" // Icon for "mixed" type
         }
     }
     

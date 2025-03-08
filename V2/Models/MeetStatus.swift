@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 /// Status of a meet representing its lifecycle stage
-public enum MeetStatus: String, Codable, CaseIterable, Identifiable {
+public enum MeetStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case upcoming
     case active
     case completed
@@ -76,6 +76,12 @@ public enum MeetStatus: String, Codable, CaseIterable, Identifiable {
         }
     }
     
+    /// Determines if the meet should be scrollable in horizontal lists
+    /// All meets should be scrollable regardless of status
+    public var allowsScrolling: Bool {
+        return true // Always allow scrolling regardless of status
+    }
+    
     /// Returns the status based on current date and meet date
     public static func determineStatus(meetDate: Date, isCanceled: Bool = false) -> MeetStatus {
         if isCanceled {
@@ -84,13 +90,17 @@ public enum MeetStatus: String, Codable, CaseIterable, Identifiable {
         
         let now = Date()
         
+        // Add buffer times to prevent rapid status changes
         // Active: From 30 minutes before start time until 24 hours after
         let activeStartTime = meetDate.addingTimeInterval(-30 * 60) // 30 minutes before
         let activeEndTime = meetDate.addingTimeInterval(24 * 60 * 60) // 24 hours after
         
-        if now < activeStartTime {
+        // Add a 5-minute buffer at transitions to prevent rapid status changes
+        let bufferTime: TimeInterval = 5 * 60 // 5 minutes in seconds
+        
+        if now < activeStartTime.addingTimeInterval(-bufferTime) {
             return .upcoming
-        } else if now >= activeStartTime && now <= activeEndTime {
+        } else if now >= activeStartTime.addingTimeInterval(-bufferTime) && now <= activeEndTime.addingTimeInterval(bufferTime) {
             return .active
         } else {
             return .completed

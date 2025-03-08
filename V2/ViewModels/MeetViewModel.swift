@@ -50,6 +50,17 @@ class MeetViewModel: ObservableObject {
     @Published var activelyFilteringByStatus = false
     @Published var selectedStatusFilter: MeetStatus?
     @Published var meetsByStatus: [MeetStatus: [Meet]] = [:]
+    @Published var isInitialized = false // Track when the view model has completed its initial data loading
+    @Published var isInScrollBoundary: Bool = false
+    
+    // Track status transitions to prevent UI flickering
+    private var statusTransitionTimers: [MeetStatus: Timer] = [:]
+    @MainActor private var transitionalStatuses: Set<MeetStatus> = []
+    
+    // Status refresh throttling
+    private static var lastStatusRefreshTime: Date = .distantPast
+    private let statusRefreshInterval: TimeInterval = 300 // 5 minutes in seconds
+    
     private var allLocations: [Location] = []
     
     private let supabase = SupabaseService.shared
@@ -90,10 +101,11 @@ class MeetViewModel: ObservableObject {
             self.error = MeetError.networkError
         }
         
-        startPolling()
+        // Use 30-second polling interval instead of 5 seconds
+        startPolling(interval: 30)
     }
     
-    private func startPolling() {
+    private func startPolling(interval: Double = 30) {
         // Cancel any existing polling task
         pollingTask?.cancel()
         
@@ -110,7 +122,8 @@ class MeetViewModel: ObservableObject {
                 }
                 
                 do {
-                    try await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                    // Use a much longer interval for polling (30 seconds instead of 5)
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 } catch {
                     // Task was cancelled
                     break
@@ -137,9 +150,21 @@ class MeetViewModel: ObservableObject {
         // After loading the meets
         updateMeetsByStatus()
         
-        // Schedule status refresh
-        Task {
-            await refreshMeetStatuses()
+        // Mark as initialized
+        await MainActor.run {
+            if !isInitialized {
+                isInitialized = true
+            }
+        }
+        
+        // Check status only every 5 minutes instead of every poll
+        if Date().timeIntervalSince(Self.lastStatusRefreshTime) > statusRefreshInterval {
+            // It's been more than 5 minutes since our last status check
+            Self.lastStatusRefreshTime = Date()
+            
+            Task {
+                await refreshMeetStatuses()
+            }
         }
     }
     
@@ -970,24 +995,39 @@ class MeetViewModel: ObservableObject {
     // Add a new method to refresh meet statuses
     func refreshMeetStatuses() async {
         var updatedMeets = 0
+        var statusChanges: [String: MeetStatus] = [:]
+        
+        // Skip status updates if we're at a scroll boundary
+        if isInScrollBoundary {
+            return // Skip status checking entirely
+        }
         
         for (_, meet) in meets.enumerated() {
             let calculatedStatus = MeetStatus.determineStatus(meetDate: meet.date)
             
             // Only update if the status has changed
             if calculatedStatus != meet.status {
-                do {
-                    try await updateMeetStatus(meetId: meet.id, status: calculatedStatus)
-                    updatedMeets += 1
-                } catch {
-                    print("Error updating meet status: \(error)")
-                }
+                statusChanges[meet.id] = calculatedStatus
             }
         }
         
-        if updatedMeets > 0 {
-            print("Updated status for \(updatedMeets) meets")
-            try? await fetchMeets() // Refresh the meets list
+        // Only make db calls if we actually have status changes
+        if !statusChanges.isEmpty {
+            // Process in batches to reduce individual calls
+            for (meetId, newStatus) in statusChanges {
+                do {
+                    try await updateMeetStatus(meetId: meetId, status: newStatus, skipLogging: true)
+                    updatedMeets += 1
+                } catch {
+                    // Don't print error for every single meet to reduce console spam
+                }
+            }
+        
+            // Single log statement for all updates
+            if updatedMeets > 0 {
+                print("Updated status for \(updatedMeets) meets")
+                try? await fetchMeets() // Refresh the meets list
+            }
         }
         
         // Categorize meets by status
@@ -995,9 +1035,14 @@ class MeetViewModel: ObservableObject {
     }
     
     // Add a method to update a single meet status
-    func updateMeetStatus(meetId: String, status: MeetStatus) async throws {
+    func updateMeetStatus(meetId: String, status: MeetStatus, skipLogging: Bool = false) async throws {
         isLoading = true
         defer { isLoading = false }
+        
+        // Skip status updates if we're at a scroll boundary to reduce console spam
+        if isInScrollBoundary {
+            return // Skip status checking
+        }
         
         do {
             try await supabase.client.from("meets")
@@ -1013,9 +1058,16 @@ class MeetViewModel: ObservableObject {
                 
                 // Also update in any other arrays that might contain this meet
                 updateMeetInArrays(updatedMeet)
+                
+                // Only log individual status changes if skipLogging is false
+                if !skipLogging {
+                    print("Updated meet \(meetId) status to \(status.rawValue)")
+                }
             }
         } catch {
-            print("Error updating meet status: \(error)")
+            if !skipLogging {
+                print("Error updating meet status: \(error)")
+            }
             throw MeetError.networkError
         }
     }
@@ -1046,15 +1098,113 @@ class MeetViewModel: ObservableObject {
         updateMeetsByStatus()
     }
     
-    // Organize meets by their status
+    // Update meetsByStatus dictionary with current status of all meets
     private func updateMeetsByStatus() {
+        // Skip if we're already at scroll boundary or in a transition to prevent excessive updates
+        guard !isInScrollBoundary else { return }
+        
+        // Create a dictionary to hold meets grouped by status
         var categorized: [MeetStatus: [Meet]] = [:]
         
+        // Initialize all status categories with empty arrays to ensure consistent UI
         for status in MeetStatus.allCases {
-            categorized[status] = meets.filter { $0.status == status }
+            categorized[status] = []
         }
         
+        // Loop through all meets and categorize by status
+        for meet in meets {
+            let status = meet.status
+            var meetsWithStatus = categorized[status] ?? []
+            meetsWithStatus.append(meet)
+            categorized[status] = meetsWithStatus
+            
+            // Check for status transitions - compare with previous counts
+            let previousCount = meetsByStatus[status]?.count ?? 0
+            let currentCount = meetsWithStatus.count
+            
+            if previousCount != currentCount {
+                handleStatusCountChange(status: status, oldCount: previousCount, newCount: currentCount)
+            }
+        }
+        
+        // Update the dictionary without logging
         meetsByStatus = categorized
+    }
+    
+    // Handle changes in meet counts for a status to prevent UI flickering
+    private func handleStatusCountChange(status: MeetStatus, oldCount: Int, newCount: Int) {
+        // Skip status transitions handling when we're at scroll boundary to prevent UI glitches
+        guard !isInScrollBoundary else { return }
+        
+        // Determine if this is a transition worth tracking
+        let isSignificantTransition = (oldCount == 0 && newCount > 0) || (oldCount > 0 && newCount == 0)
+        
+        // Only track significant transitions
+        if isSignificantTransition {
+            // Cancel existing timer if there is one
+            statusTransitionTimers[status]?.invalidate()
+            
+            // Critical status changes (like empty to non-empty) might need transition
+            // but keep transition extremely short to improve scrolling
+            transitionalStatuses.insert(status)
+            
+            // Use DispatchQueue instead of Timer for better threading behavior
+            // This prevents blocking during scrolling
+            let statusCopy = status // Create a local copy
+            statusTransitionTimers[status] = nil // Clear existing timer
+            
+            // Use a very short delay - just 0.2 seconds instead of 0.75
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self = self else { return }
+                // Clear transitional state on main actor
+                Task { @MainActor in
+                    if self.transitionalStatuses.contains(statusCopy) {
+                        self.transitionalStatuses.remove(statusCopy)
+                        self.objectWillChange.send()
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check if a status is currently in transition - make it public and clear for UI
+    public func isStatusTransitioning(_ status: MeetStatus) -> Bool {
+        // Optimization: Never use transitions for these frequently viewed statuses
+        // to prevent UI stuttering
+        if status == .completed || status == .upcoming {
+            return false
+        }
+        
+        // Skip transition checking when at scroll boundary to prevent UI jitter
+        guard !isInScrollBoundary else { return false }
+        
+        // Simple check if status is transitioning without setting up another timer
+        return transitionalStatuses.contains(status)
+    }
+    
+    // Helper method to clear transition for a specific status
+    @MainActor
+    private func clearTransitionForStatus(_ status: MeetStatus) {
+        statusTransitionTimers[status]?.invalidate()
+        statusTransitionTimers[status] = nil
+        transitionalStatuses.remove(status)
+        objectWillChange.send()
+    }
+    
+    // Enable/disable status checking when at scroll boundaries
+    public func setScrollBoundaryState(_ state: Bool) {
+        isInScrollBoundary = state
+        
+        // When at boundary, prevent unnecessary status checks
+        if state {
+            // If we're at boundary, don't perform status checks to reduce console spam
+            print("Scroll boundary reached - pausing status checks")
+        }
+    }
+    
+    // Get meets for a specific status, even if in transition
+    public func getMeetsForStatus(_ status: MeetStatus) -> [Meet] {
+        return meetsByStatus[status] ?? []
     }
     
     // Add status filter toggle functionality
@@ -1075,6 +1225,18 @@ class MeetViewModel: ObservableObject {
     /// Forces a complete refresh of all meet collections
     func forceRefreshAll() async {
         isLoading = true
+        
+        // Clear any transitional states first
+        transitionalStatuses.removeAll()
+        for timer in statusTransitionTimers.values {
+            timer.invalidate()
+        }
+        statusTransitionTimers.removeAll()
+        
+        // Initialize the meetsByStatus dictionary with empty arrays for all statuses
+        for status in MeetStatus.allCases {
+            meetsByStatus[status] = []
+        }
         
         do {
             try await fetchMeets()
@@ -1103,7 +1265,27 @@ class MeetViewModel: ObservableObject {
             updateMeetsByStatus()
         }
         
+        // Mark as initialized after all data is loaded
+        isInitialized = true
         isLoading = false
+    }
+    
+    // Clear any transitional states that might be stuck
+    @MainActor
+    public func clearAllTransitionalStates() {
+        // Immediately clear all transitional states
+        if !transitionalStatuses.isEmpty {
+            transitionalStatuses.removeAll()
+            
+            // Cancel any pending timers
+            for (status, timer) in statusTransitionTimers {
+                timer.invalidate()
+                statusTransitionTimers[status] = nil
+            }
+            
+            // Force UI update
+            objectWillChange.send()
+        }
     }
 }
 
