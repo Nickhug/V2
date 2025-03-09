@@ -5,7 +5,6 @@ struct CreateMeetOnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: MeetViewModel
     @StateObject private var onboardingState = CreateMeetOnboardingState()
-    @State private var animateGradient = false
     
     // Screen dimensions for animations
     @State private var screenWidth = UIScreen.main.bounds.width
@@ -13,68 +12,61 @@ struct CreateMeetOnboardingView: View {
     
     var body: some View {
         ZStack {
-            // Animated gradient background with parallax effect
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    MeetSpotColors.purple900,
-                    MeetSpotColors.pink500.opacity(0.8),
-                    MeetSpotColors.purple900
-                ]),
-                startPoint: animateGradient ? .topLeading : .bottomLeading,
-                endPoint: animateGradient ? .bottomTrailing : .topTrailing
-            )
-            .ignoresSafeArea()
-            .onAppear {
-                withAnimation(.linear(duration: 5.0).repeatForever(autoreverses: true)) {
-                    animateGradient.toggle()
-                }
-            }
+            // Replace LinearGradient with ModernGradientBackground
+            ModernGradientBackground()
+                .ignoresSafeArea()
             
             // Content container
             VStack(spacing: 0) {
-                // Header
-                ZStack {
-                    HStack {
-                        // Back button
-                        if step != .welcome {
-                            Button(action: {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    onboardingState.moveToPreviousStep()
-                                }
-                            }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.title3.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .padding(12)
-                                    .background(Material.ultraThinMaterial)
-                                    .clipShape(Circle())
-                                    .subtleShadow()
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // Close button
+                // Header with close button and step progress
+                HStack {
+                    // Back button (if not on first step)
+                    if onboardingState.currentStep != .welcome {
                         Button(action: {
-                            dismiss()
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                onboardingState.moveToPreviousStep()
+                            }
                         }) {
-                            Image(systemName: "xmark")
+                            Image(systemName: "chevron.left")
                                 .font(.title3.weight(.semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(.black)
                                 .padding(12)
-                                .background(Material.ultraThinMaterial)
+                                .background(Color.white)
                                 .clipShape(Circle())
-                                .subtleShadow()
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.black, lineWidth: 1.5)
+                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                         }
                     }
-                    .padding(.horizontal)
                     
-                    // Progress indicator
-                    ProgressIndicator(
-                        currentStep: onboardingState.currentStepIndex + 1,
-                        totalSteps: CreateMeetStep.allCases.count - 1
-                    )
+                    Spacer()
+                    
+                    // Close button
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.title3.weight(.semibold))
+                            .foregroundColor(.black)
+                            .padding(12)
+                            .background(Color.white)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                    }
                 }
+                .padding(.horizontal)
+                
+                // Progress indicator
+                CreateMeetProgressIndicator(
+                    currentStep: onboardingState.currentStepIndex + 1,
+                    totalSteps: CreateMeetStep.allCases.count - 1
+                )
                 .padding(.top)
                 .padding(.bottom, 8)
                 
@@ -96,73 +88,63 @@ struct CreateMeetOnboardingView: View {
                 
                 // Bottom navigation
                 if onboardingState.currentStep != .welcome {
-                    VStack {
-                        if onboardingState.isLastStep {
-                            Button(action: {
+                    HStack {
+                        // Back button (removed as it's now in the header)
+                        Spacer()
+                        
+                        // Next/Submit button
+                        Button(action: {
+                            if onboardingState.isLastStep {
                                 createMeet()
-                            }) {
-                                HStack {
-                                    Text("Create Meet")
-                                        .font(.headline)
-                                    
-                                    Image(systemName: "sparkles")
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
-                                .pronouncedShadow()
-                            }
-                            .disabled(!onboardingState.canSubmitForm)
-                            .opacity(onboardingState.canSubmitForm ? 1.0 : 0.6)
-                        } else {
-                            Button(action: {
+                            } else {
                                 validateAndContinue()
-                            }) {
-                                HStack {
-                                    Text("Continue")
-                                        .font(.headline)
-                                    
+                            }
+                        }) {
+                            HStack {
+                                Text(onboardingState.isLastStep ? "Create Meet" : "Continue")
+                                    .font(.headline)
+                                
+                                if onboardingState.isLastStep {
+                                    Image(systemName: "sparkles")
+                                } else {
                                     Image(systemName: "arrow.right")
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .foregroundColor(.white)
-                                .cornerRadius(16)
-                                .pronouncedShadow()
                             }
-                            .disabled(!onboardingState.canContinue)
-                            .opacity(onboardingState.canContinue ? 1.0 : 0.6)
+                            .foregroundColor(.black)
+                            .frame(width: 160)
+                            .padding(.vertical, 16)
+                            .background(Color.white)
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
                         }
+                        .opacity(onboardingState.canContinue ? 1.0 : 0.5)
+                        .disabled(!onboardingState.canContinue)
                     }
-                    .padding()
-                    .background(
-                        Rectangle()
-                            .fill(Material.ultraThinMaterial)
-                            .backgroundStyle(MeetSpotColors.backgroundGradient)
-                    )
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
             }
+            
+            // Loading overlay
+            if onboardingState.isLoading {
+                Color.black.opacity(0.5)
+                    .ignoresSafeArea()
+                
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            }
         }
-        .preferredColorScheme(.dark)
-        .alert("Error", isPresented: $onboardingState.showError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(onboardingState.errorMessage)
+        .alert(isPresented: $onboardingState.showError) {
+            Alert(
+                title: Text("Error"),
+                message: Text(onboardingState.errorMessage),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
     
@@ -268,17 +250,24 @@ struct CreateMeetOnboardingView: View {
 }
 
 // Progress indicator view for showing current step
-struct ProgressIndicator: View {
+struct CreateMeetProgressIndicator: View {
     let currentStep: Int
     let totalSteps: Int
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 16) {
             ForEach(1...totalSteps, id: \.self) { step in
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(step <= currentStep ? Color.white : Color.white.opacity(0.3))
-                    .frame(width: 24, height: 4)
-                    .animation(.spring(), value: currentStep)
+                ZStack {
+                    Circle()
+                        .fill(step <= currentStep ? Color.white : Color.white.opacity(0.3))
+                        .frame(width: 8, height: 8)
+                    
+                    if step <= currentStep {
+                        Circle()
+                            .stroke(Color.black, lineWidth: 1.5)
+                            .frame(width: 8, height: 8)
+                    }
+                }
             }
         }
     }

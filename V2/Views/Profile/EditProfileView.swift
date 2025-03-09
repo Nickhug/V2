@@ -98,18 +98,18 @@ struct EditProfileView: View {
             }) {
                 Image(systemName: "xmark")
                     .font(.title3)
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .padding(12)
                     .background(
                         Circle()
-                            .fill(Material.ultraThinMaterial)
+                            .fill(Color.white)
                             .overlay(
                                 Circle()
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                    .stroke(Color.black, lineWidth: 1.5)
                             )
                     )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
             }
-            .subtleShadow()
         }
         .padding()
         .background(Color.black.opacity(0.2))
@@ -217,7 +217,7 @@ struct EditProfileView: View {
                             .foregroundColor(activeSection == section ? .white : .white.opacity(0.6))
                         
                         Rectangle()
-                            .fill(activeSection == section ? MeetSpotColors.accentGradient : LinearGradient(colors: [Color.clear], startPoint: .leading, endPoint: .trailing))
+                            .fill(activeSection == section ? Color.black : Color.clear)
                             .frame(height: 2)
                     }
                 }
@@ -407,7 +407,7 @@ struct EditProfileView: View {
     private func socialRow(icon: String, platform: String, handle: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .foregroundColor(MeetSpotColors.pink500)
+                .foregroundColor(.black)
                 .frame(width: 20)
             
             Text(platform)
@@ -431,7 +431,7 @@ struct EditProfileView: View {
             VStack(alignment: .center, spacing: 16) {
                 Image(systemName: "gear")
                     .font(.system(size: 48))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.black)
                 
                 Text("Preferences Coming Soon")
                     .font(.headline)
@@ -454,23 +454,27 @@ struct EditProfileView: View {
             HStack {
                 if isSaving {
                     ProgressView()
-                        .tint(.white)
+                        .tint(.black)
                         .padding(.trailing, 10)
                 }
                 
                 Text("Save Changes")
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
             }
             .frame(maxWidth: .infinity)
             .padding()
             .background(
                 isFormValid 
-                ? MeetSpotColors.accentGradient
-                : LinearGradient(colors: [Color.gray.opacity(0.5)], startPoint: .leading, endPoint: .trailing)
+                ? Color.white
+                : Color.white.opacity(0.5)
             )
             .cornerRadius(MeetSpotStyle.Radius.medium)
-            .pronouncedShadow()
+            .overlay(
+                RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.medium)
+                    .stroke(Color.black, lineWidth: 1.5)
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
         }
         .disabled(!isFormValid || isSaving)
     }

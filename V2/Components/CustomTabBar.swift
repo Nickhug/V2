@@ -29,6 +29,8 @@ struct MainTabView: View {
     @State private var selectedTab: Tab = .discover
     @StateObject private var discoverViewModel = DiscoverViewModel()
     @StateObject private var meetViewModel = MeetViewModel()
+    @StateObject private var vehicleViewModel = VehicleViewModel()
+    @State private var showingVehicleOnboarding = false
     
     var body: some View {
         ZStack {
@@ -44,11 +46,19 @@ struct MainTabView: View {
                     }
                     .tag(Tab.discover)
                 
-                VehiclesView()
-                    .tabItem {
-                        Label(Tab.vehicles.title, systemImage: Tab.vehicles.icon)
+                // Only show the actual VehiclesView if the user has vehicles
+                Group {
+                    if !vehicleViewModel.vehicles.isEmpty {
+                        VehiclesView()
+                    } else {
+                        // Show a placeholder view that will trigger onboarding
+                        VehicleOnboardingPlaceholder(showOnboarding: $showingVehicleOnboarding)
                     }
-                    .tag(Tab.vehicles)
+                }
+                .tabItem {
+                    Label(Tab.vehicles.title, systemImage: Tab.vehicles.icon)
+                }
+                .tag(Tab.vehicles)
                 
                 ProfileView(viewModel: meetViewModel)
                     .tabItem {
@@ -62,7 +72,19 @@ struct MainTabView: View {
                     }
                     .tag(Tab.settings)
             }
-            // No custom styling or modifications to the TabView
+            .sheet(isPresented: $showingVehicleOnboarding) {
+                VehicleOnboardingView { newVehicle in
+                    Task {
+                        do {
+                            try await vehicleViewModel.createVehicle(newVehicle)
+                            await vehicleViewModel.fetchVehicles()
+                        } catch {
+                            print("Error creating vehicle: \(error)")
+                        }
+                    }
+                }
+                .environmentObject(AuthManager())
+            }
         }
         .onAppear {
             // Preload data
@@ -70,9 +92,35 @@ struct MainTabView: View {
                 do {
                     await discoverViewModel.fetchMeets()
                     try await meetViewModel.fetchMeets()
+                    await vehicleViewModel.fetchVehicles()
                 } catch {
                     print("Error in preloading tab content: \(error)")
                 }
+            }
+        }
+        .onChange(of: selectedTab) { _, newTab in
+            if newTab == .vehicles && vehicleViewModel.vehicles.isEmpty {
+                showingVehicleOnboarding = true
+            }
+        }
+    }
+}
+
+// A simple placeholder view that displays nothing and automatically triggers onboarding
+struct VehicleOnboardingPlaceholder: View {
+    @Binding var showOnboarding: Bool
+    
+    var body: some View {
+        ZStack {
+            AnimatedGradientBackground()
+            VStack {
+                // Nothing visible here since we'll immediately show the onboarding
+            }
+        }
+        .onAppear {
+            // Small delay to ensure the tab transition completes before showing sheet
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showOnboarding = true
             }
         }
     }

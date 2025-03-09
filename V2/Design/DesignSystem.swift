@@ -14,8 +14,8 @@ enum DesignSystem {
         
         static let accentGradient = LinearGradient(
             colors: [
-                Color(hex: "#EC4899"),  // Pink
-                Color(hex: "#8B5CF6")   // Purple
+                Color.white,  // Changed from pink
+                Color.white   // Changed from purple
             ],
             startPoint: .leading,
             endPoint: .trailing
@@ -58,11 +58,15 @@ enum DesignSystem {
             Button(action: action) {
                 Text(title)
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
-                    .background(Colors.accentGradient)
+                    .background(Color.white)
                     .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
             }
         }
     }
@@ -88,7 +92,7 @@ enum DesignSystem {
                 )
                 .overlay(
                     Circle()
-                        .strokeBorder(.white.opacity(0.2), lineWidth: 2)
+                        .strokeBorder(Color.black, lineWidth: 1.5)
                 )
         }
     }
@@ -101,11 +105,11 @@ enum DesignSystem {
         var body: some View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .foregroundColor(Color(hex: "#EC4899"))
+                    .foregroundColor(Color.black)
                 Text(value)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.black)
                 Text(label)
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.black.opacity(0.6))
             }
             .font(.subheadline)
         }

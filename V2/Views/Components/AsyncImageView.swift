@@ -7,6 +7,8 @@ struct AsyncImageView: View {
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isEnabled) private var isEnabled
+    @State private var loadAttempts: Int = 0
+    @State private var isRetrying: Bool = false
     
     init(imageName: String, avatarUrl: String? = nil, downsample: Bool = false) {
         self.imageName = imageName
@@ -15,61 +17,106 @@ struct AsyncImageView: View {
     }
     
     private func isValidURL(_ urlString: String) -> Bool {
-        guard !urlString.isEmpty,
-              URL(string: urlString) != nil else {
+        guard !urlString.isEmpty else {
+            print("AsyncImageView: Empty URL string")
             return false
         }
-        return true
+        
+        guard let url = URL(string: urlString) else {
+            print("AsyncImageView: Invalid URL format: \(urlString)")
+            return false
+        }
+        
+        // Check if the URL is a valid web URL
+        if url.scheme == "http" || url.scheme == "https" {
+            return UIApplication.shared.canOpenURL(url)
+        }
+        
+        // If it's a local file URL or other type, just verify it has a valid path
+        return !url.path.isEmpty
+    }
+    
+    private func getImageURL() -> URL? {
+        // First try avatar URL
+        if let avatarUrl = avatarUrl, !avatarUrl.isEmpty {
+            print("AsyncImageView: Trying avatarUrl: \(avatarUrl)")
+            if let url = URL(string: avatarUrl) {
+                return url
+            }
+        }
+        
+        // Then try image name
+        if !imageName.isEmpty {
+            print("AsyncImageView: Trying imageName: \(imageName)")
+            if let url = URL(string: imageName) {
+                return url
+            } else {
+                print("AsyncImageView: Failed to create URL from imageName: \(imageName)")
+            }
+        } else {
+            print("AsyncImageView: imageName is empty")
+        }
+        
+        print("AsyncImageView: No valid URL found")
+        return nil
+    }
+    
+    private func retryLoadingIfNeeded() {
+        // Only retry up to 3 times with exponential backoff
+        guard loadAttempts < 3, !isRetrying else { return }
+        
+        isRetrying = true
+        let delay = pow(Double(2), Double(loadAttempts))
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            loadAttempts += 1
+            isRetrying = false
+        }
     }
     
     var body: some View {
-        if let avatarUrl = avatarUrl, !avatarUrl.isEmpty, isValidURL(avatarUrl) {
-            // Use the new avatarUrl field if available
-            AsyncImage(url: URL(string: avatarUrl)) { phase in
-                switch phase {
-                case .empty:
-                    placeholderView
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.2)))
-                case .failure:
-                    fallbackImageView
-                @unknown default:
-                    placeholderView
+        Group {
+            if let imageURL = getImageURL() {
+                AsyncImage(url: imageURL, transaction: .init(animation: .easeInOut(duration: 0.2))) { phase in
+                    switch phase {
+                    case .empty:
+                        placeholderView
+                            .onAppear {
+                                // Reset retry counter when starting fresh
+                                if loadAttempts > 0 {
+                                    loadAttempts = 0
+                                }
+                            }
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            // Apply quality adjustment for better performance if requested
+                            .if(downsample) { view in
+                                view.contrast(0.95) // Slight quality adjustment instead of interpolation
+                            }
+                            .onAppear {
+                                // Reset on successful load
+                                loadAttempts = 0
+                            }
+                    case .failure:
+                        fallbackImageView
+                            .onAppear {
+                                // Try to reload the image after a failure
+                                retryLoadingIfNeeded()
+                            }
+                    @unknown default:
+                        placeholderView
+                    }
                 }
-            }
-            // Optimize loading - only load when view is visible and enabled
-            .task(priority: .userInitiated) { }
-        } else if !imageName.isEmpty, isValidURL(imageName) {
-            // Fall back to legacy avatar field
-            AsyncImage(url: URL(string: imageName), transaction: .init(animation: .easeInOut(duration: 0.2))) { phase in
-                switch phase {
-                case .empty:
-                    placeholderView
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        // Apply quality adjustment for better performance if requested
-                        .if(downsample) { view in
-                            view.contrast(0.95) // Slight quality adjustment instead of interpolation
-                        }
-                case .failure:
-                    fallbackImageView
-                @unknown default:
-                    placeholderView
+                // Set higher priority for image loading
+                .task(priority: .userInitiated) {
+                    // This task ensures the image loading is properly managed
                 }
+            } else {
+                // No valid image URL
+                fallbackImageView
             }
-            // Optimize loading with task instead of unavailable priority modifier
-            .task {
-                // This task ensures the image loading is properly managed
-                // No specific code needed in the task, just the presence of it helps optimization
-            }
-        } else {
-            // No image available or invalid URL
-            fallbackImageView
         }
     }
     

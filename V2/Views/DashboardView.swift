@@ -6,172 +6,140 @@ struct DashboardView: View {
     @EnvironmentObject private var authManager: AuthManager
     @SceneStorage("selectedTab") private var selectedTab = "home" // Persist tab selection
     
-    // Add pre-loading state management
+    // State management
     @State private var hasAppeared = false
     @State private var contentLoadingComplete = false
-    
-    // Add error state
     @State private var errorMessage: String? = nil
-    
-    // Add state to control animations
-    @State private var isAnimating = false
-    
-    // Add state to track if view content is ready
-    @State private var viewsPreloaded = false
-    
-    // Add reference to background for pausing animations during transitions
-    @State private var backgroundPaused = true
-    
-    // New state to track previous tab for proper transitions
     @State private var previousTab: String? = nil
     
-    // New state to manage memory pressure
-    @State private var isMemoryConstrained = false
+    // Cache for each tab's content to prevent recreation during tab changes
+    // This is the key to solving the problem - we're preloading and preserving all tab content
+    private var homeViewCache: some View {
+        HomeView()
+            .environmentObject(viewModel)
+            .id("cached-home")
+    }
     
-    // Add state to control rendering method
-    @State private var useMetalRendering = true
+    private var exploreViewCache: some View {
+        ExploreView(viewModel: viewModel)
+            .id("cached-explore")
+    }
     
-    // Environment values to disable animations completely
-    @Environment(\.displayScale) private var displayScale
+    private var routesViewCache: some View {
+        RoutesView()
+            .environmentObject(routeViewModel)
+            .id("cached-routes")
+    }
     
-    // Replace or add the relevant state declarations
-    @State private var isLoading = false // Ensure this doesn't need initialization
-    @State private var isLoadingAnimating = true // Add an animation state variable if needed
+    private var profileViewCache: some View {
+        ProfileView(viewModel: viewModel)
+            .id("cached-profile")
+    }
     
     var body: some View {
         ZStack {
-            // Replace solid black background with modern gradient
+            // Background stays simple - not the source of the problem
             ModernGradientBackground()
             
-            // Standard TabView with simplified background handling
-            TabView(selection: $selectedTab) {
-                homeTab
-                    .tabItem {
-                        Label("Home", systemImage: "house.fill")
-                    }
-                    .tag("home")
-                    .id("home-tab")
+            // Main content area
+            VStack(spacing: 0) {
+                // Content area - all content is pre-loaded and kept in memory
+                // We're just changing visibility, not creating/destroying views
+                ZStack {
+                    // Stack all views on top of each other and control visibility 
+                    // with opacity instead of conditional rendering
+                    homeViewCache
+                        .environmentObject(viewModel)
+                        .opacity(selectedTab == "home" ? 1 : 0)
+                        .allowsHitTesting(selectedTab == "home")
+                    
+                    exploreViewCache
+                        .environmentObject(viewModel)
+                        .opacity(selectedTab == "explore" ? 1 : 0) 
+                        .allowsHitTesting(selectedTab == "explore")
+                    
+                    routesViewCache
+                        .environmentObject(routeViewModel)
+                        .opacity(selectedTab == "routes" ? 1 : 0)
+                        .allowsHitTesting(selectedTab == "routes")
+                    
+                    profileViewCache
+                        .environmentObject(viewModel)
+                        .opacity(selectedTab == "profile" ? 1 : 0)
+                        .allowsHitTesting(selectedTab == "profile")
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                ExploreView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Explore", systemImage: "magnifyingglass")
-                    }
-                    .tag("explore")
-                    .id("explore-tab")
-                
-                RoutesView()
-                    .environmentObject(routeViewModel)
-                    .tabItem {
-                        Label("Routes", systemImage: "map.fill")
-                    }
-                    .tag("routes")
-                    .id("routes-tab")
-                
-                ProfileView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Profile", systemImage: "person.fill")
-                    }
-                    .tag("profile")
-                    .id("profile-tab")
+                // Tab bar
+                customTabBar
             }
-            .accentColor(Theme.Colors.accent)
-            // Use a minimal transition animation
-            .transaction { transaction in
-                transaction.animation = Animation.linear(duration: 0.5)
-            }
-            .transition(.identity)
-            .animation(nil, value: selectedTab)
-            .compositingGroup()
-            .allowsHitTesting(contentLoadingComplete)
-        }
-        // Subscribe to memory pressure notifications
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            isMemoryConstrained = true
-            // Force cleanup of unused resources
-            cleanupUnusedResources()
         }
         .onAppear {
-            // Pre-load views and start animations
+            // Pre-load data
             Task {
                 if !hasAppeared {
                     hasAppeared = true
                     await fetchData()
-                    
-                    // Signal for background to start
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("ResumeAnimatedBackgrounds"), 
-                        object: nil
-                    )
-                    
                     contentLoadingComplete = true
-                    isAnimating = true
                 }
-            }
-        }
-        .onChange(of: selectedTab) { oldTab, newTab in
-            print("Tab changed from \(oldTab) to \(newTab)")
-            
-            // Store previous tab for reference
-            previousTab = oldTab
-            
-            // Cancel any in-progress animations or gestures
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            
-            // Temporarily pause background animations
-            NotificationCenter.default.post(name: NSNotification.Name("PauseAnimatedBackgrounds"), object: nil)
-            
-            // Clean up memory
-            if #available(iOS 15.0, *) {
-                Task {
-                    let _ = autoreleasepool { () -> Void in 
-                        URLCache.shared.removeAllCachedResponses()
-                    }
-                }
-            }
-            
-            // Resume animations after a brief pause
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                NotificationCenter.default.post(name: NSNotification.Name("ResumeAnimatedBackgrounds"), object: nil)
             }
         }
     }
     
-    private var homeTab: some View {
-        HomeView()
-            .environmentObject(viewModel)
-            // Use identity transition to prevent animation conflicts
-            .transition(.identity)
+    private var customTabBar: some View {
+        HStack(spacing: 0) {
+            tabButton(title: "Home", icon: "house.fill", tag: "home")
+            tabButton(title: "Explore", icon: "magnifyingglass", tag: "explore")
+            tabButton(title: "Routes", icon: "map.fill", tag: "routes")
+            tabButton(title: "Profile", icon: "person.fill", tag: "profile")
+        }
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.8))
+    }
+    
+    private func tabButton(title: String, icon: String, tag: String) -> some View {
+        Button(action: {
+            if selectedTab != tag {
+                // Simple tab change - just switch the state
+                selectedTab = tag
+                
+                // Notify views about tab changes
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("TabWillChange"),
+                    object: nil,
+                    userInfo: ["from": selectedTab, "to": tag]
+                )
+                
+                // Let views know when the transition completes
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("TabDidChange"),
+                        object: nil,
+                        userInfo: ["from": selectedTab, "to": tag]
+                    )
+                }
+            }
+        }) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                Text(title)
+                    .font(.caption)
+            }
+            .foregroundColor(selectedTab == tag ? Color.white : .gray)
+            .frame(maxWidth: .infinity)
+        }
     }
     
     private func fetchData() async {
         do {
-            // Start all data loading operations with proper error handling
             try await viewModel.fetchMeets()
             await routeViewModel.fetchUserRoutes()
             contentLoadingComplete = true
-            viewsPreloaded = true
         } catch {
-            // Handle any errors gracefully
             errorMessage = "Error loading data: \(error.localizedDescription)"
             print("Error preloading dashboard content: \(error)")
-            
-            // Still mark content as loaded so UI is usable
-            contentLoadingComplete = true
-            viewsPreloaded = true
-        }
-    }
-    
-    // New function to clean up resources when memory is constrained
-    private func cleanupUnusedResources() {
-        // Pause background animations during cleanup
-        NotificationCenter.default.post(name: NSNotification.Name("PauseAnimatedBackgrounds"), object: nil)
-        
-        // Short delay before resuming animations
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.isMemoryConstrained = false
-            
-            // Resume animations
-            NotificationCenter.default.post(name: NSNotification.Name("ResumeAnimatedBackgrounds"), object: nil)
+            contentLoadingComplete = true // Still mark as loaded for usability
         }
     }
 }

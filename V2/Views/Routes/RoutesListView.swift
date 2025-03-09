@@ -44,9 +44,14 @@ struct RoutesListView: View {
                             .padding(.vertical, 8)
                             .background(
                                 Capsule()
-                                    .fill(MeetSpotColors.accentGradient)
+                                    .fill(Color.white)
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.black, lineWidth: 1.5)
+                                    )
                             )
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
+                            .shadow(color: Color.black.opacity(0.15), radius: 3, x: 0, y: 1)
                         }
                         .padding(.trailing)
                     }
@@ -70,9 +75,14 @@ struct RoutesListView: View {
                             } label: {
                                 Text("Create Your First Route")
                                     .padding()
-                                    .background(MeetSpotColors.accentGradient)
-                                    .foregroundColor(.white)
+                                    .background(Color.white)
+                                    .foregroundColor(.black)
                                     .cornerRadius(10)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.black, lineWidth: 1.5)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.15), radius: 3, x: 0, y: 1)
                             }
                         }
                         
@@ -133,6 +143,7 @@ struct RoutesListView: View {
             }
         }
         .navigationTitle(meetId != nil ? "Meet Routes" : "My Routes")
+        .navigationBarAppearance(backgroundColor: .clear, textColor: .white)
         .sheet(isPresented: $showingRouteEditor) {
             RouteEditorView(
                 meetId: meetId,
@@ -300,12 +311,17 @@ struct RouteRow: View {
             // Route thumbnail/icon
             ZStack {
                 Circle()
-                    .fill(MeetSpotColors.accentGradient)
+                    .fill(Color.white)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
                     .frame(width: 50, height: 50)
                 
                 Image(systemName: "map.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
             }
             
             // Route details

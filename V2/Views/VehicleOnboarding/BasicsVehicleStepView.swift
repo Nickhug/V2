@@ -10,127 +10,118 @@ struct BasicsVehicleStepView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background decoration
-            Circle()
-                .fill(MeetSpotColors.pink500.opacity(0.1))
-                .frame(width: 300, height: 300)
-                .blur(radius: 80)
-                .offset(x: -150, y: -100)
-            
-            Circle()
-                .fill(MeetSpotColors.purple900.opacity(0.1))
-                .frame(width: 250, height: 250)
-                .blur(radius: 60)
-                .offset(x: 150, y: 300)
-                
+        ScrollView {
             // Main content
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    HStack {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Tell us about your ride")
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                            
-                            Text("Add the main details of your vehicle")
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
-                        }
+            VStack(spacing: 12) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Vehicle Details")
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
                         
-                        Spacer()
-                        
-                        Image(systemName: VehicleStep.basics.systemIcon)
-                            .font(.system(size: 40))
-                            .foregroundColor(MeetSpotColors.pink500)
-                            .opacity(animateElements ? 1 : 0)
-                            .rotationEffect(.degrees(animateElements ? 0 : -30))
-                            .offset(y: animateElements ? 0 : -10)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2), value: animateElements)
+                        Text("Tell us about your vehicle")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.7))
                     }
-                    .padding(.top, 20)
                     
-                    // Form fields container
-                    VStack(spacing: 20) {
-                        // Vehicle Type Selector
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Vehicle Type")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            HStack(spacing: 12) {
-                                vehicleTypeButton(.car, icon: "car.fill", title: "Car")
-                                vehicleTypeButton(.bike, icon: "bicycle", title: "Bike")
-                                vehicleTypeButton(.mixed, icon: "car.and.bicycle", title: "Mixed")
+                    Spacer()
+                    
+                    Image(systemName: VehicleStep.basics.systemIcon)
+                        .font(.system(size: 40))
+                        .foregroundColor(.white)
+                        .opacity(animateElements ? 1 : 0)
+                        .rotationEffect(.degrees(animateElements ? 0 : -30))
+                        .offset(y: animateElements ? 0 : -10)
+                        .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2), value: animateElements)
+                }
+                .padding(.top, 20)
+                
+                // Form container
+                VStack(spacing: 20) {
+                    // Vehicle Type Selector
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Vehicle Type")
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        HStack(spacing: 12) {
+                            vehicleTypeButton(.car, icon: "car.fill", title: "Car")
+                            vehicleTypeButton(.bike, icon: "bicycle", title: "Bike")
+                            vehicleTypeButton(.mixed, icon: "car.and.bicycle", title: "Mixed")
+                        }
+                    }
+                    .padding(.horizontal)
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: animateElements)
+                    
+                    // Make field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Make")
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        GlassmorphicComponents.TextField(
+                            text: $onboardingState.make,
+                            placeholder: "e.g. Toyota",
+                            icon: "building.2.fill",
+                            isFocused: focusedField == .make
+                        )
+                        .focused($focusedField, equals: .make)
+                    }
+                    .padding(.horizontal)
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.2), value: animateElements)
+                    
+                    // Model field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Model")
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        GlassmorphicComponents.TextField(
+                            text: $onboardingState.model,
+                            placeholder: "e.g. Corolla",
+                            icon: "car.fill",
+                            isFocused: focusedField == .model
+                        )
+                        .focused($focusedField, equals: .model)
+                    }
+                    .padding(.horizontal)
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3), value: animateElements)
+                    
+                    // Year picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Year")
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.8))
+                        
+                        Picker("Year", selection: $onboardingState.year) {
+                            ForEach((1950...Calendar.current.component(.year, from: Date())).reversed(), id: \.self) { year in
+                                Text(String(year))
+                                    .foregroundColor(.white)
+                                    .tag(year)
                             }
                         }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: animateElements)
-                        
-                        // Make field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Make")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            GlassmorphicComponents.TextField(
-                                text: $onboardingState.make,
-                                placeholder: "e.g. Toyota",
-                                icon: "building.2.fill",
-                                isFocused: focusedField == .make
-                            )
-                            .focused($focusedField, equals: .make)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.2), value: animateElements)
-                        
-                        // Model field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Model")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            GlassmorphicComponents.TextField(
-                                text: $onboardingState.model,
-                                placeholder: "e.g. Supra",
-                                icon: "car.side.fill",
-                                isFocused: focusedField == .model
-                            )
-                            .focused($focusedField, equals: .model)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3), value: animateElements)
-                        
-                        // Year picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Year")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            YearPickerView(year: $onboardingState.year)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.4), value: animateElements)
-                        
-                        Spacer(minLength: 60)
+                        .pickerStyle(.wheel)
+                        .frame(height: 120)
+                        .padding(.horizontal, -16)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
                     }
-                    .padding(.vertical, 20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Material.ultraThinMaterial)
-                            .backgroundStyle(Color.black.opacity(0.3))
-                    )
-                    .mediumShadow()
+                    .padding(.horizontal)
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.4), value: animateElements)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 100)
@@ -154,70 +145,21 @@ struct BasicsVehicleStepView: View {
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 30))
+                    .font(.system(size: 24))
+                    .foregroundColor(onboardingState.type == buttonType ? .black : .white)
+                
                 Text(title)
                     .font(.caption)
                     .fontWeight(.medium)
+                    .foregroundColor(onboardingState.type == buttonType ? .black : .white)
             }
-            .foregroundColor(onboardingState.type == buttonType ? .white : .white.opacity(0.5))
             .frame(maxWidth: .infinity)
-            .frame(height: 100)
-            .background(
+            .padding(.vertical, 12)
+            .background(onboardingState.type == buttonType ? Color.white : Color.white.opacity(0.1))
+            .cornerRadius(12)
+            .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Material.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(
-                                onboardingState.type == buttonType ? 
-                                    MeetSpotColors.pink500 : Color.white.opacity(0.1),
-                                lineWidth: onboardingState.type == buttonType ? 2 : 1
-                            )
-                    )
-            )
-            .shadow(
-                color: onboardingState.type == buttonType ? 
-                    MeetSpotColors.pink500.opacity(0.5) : Color.black.opacity(0.1),
-                radius: 10, 
-                x: 0, 
-                y: 5
-            )
-            .animation(.spring(), value: onboardingState.type)
-        }
-    }
-}
-
-// Year picker with wheel style
-struct YearPickerView: View {
-    @Binding var year: Int
-    let currentYear = Calendar.current.component(.year, from: Date())
-    
-    var body: some View {
-        VStack {
-            HStack {
-                Image(systemName: "calendar")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 24, height: 24)
-                
-                Picker("", selection: $year) {
-                    ForEach((1900...currentYear).reversed(), id: \.self) { year in
-                        Text(String(year))
-                            .foregroundColor(.white)
-                            .tag(year)
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(height: 120)
-                .clipped()
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Material.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                    )
+                    .stroke(onboardingState.type == buttonType ? Color.black : Color.white.opacity(0.2), lineWidth: onboardingState.type == buttonType ? 1.5 : 1)
             )
         }
     }

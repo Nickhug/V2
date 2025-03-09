@@ -57,11 +57,15 @@ struct VehiclesView: View {
                             Button(action: { showingAddVehicle = true }) {
                                 Text("Add Vehicle")
                                     .font(.headline)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.black)
                                     .padding(.horizontal, 24)
                                     .padding(.vertical, 12)
-                                    .background(DesignSystem.Colors.accentGradient)
+                                    .background(Color.white)
                                     .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(Color.black, lineWidth: 1.5)
+                                    )
                             }
                         }
                         .padding(32)

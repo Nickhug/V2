@@ -6,6 +6,7 @@ struct ProfileView: View {
     @State private var showingEditProfile = false
     @State private var showingSettings = false
     @State private var showingVehicleManager = false
+    @State private var showingVehicleOnboarding = false
     @State private var showingAchievements = false
     @State private var showingFriends = false
     @State private var selectedVehicle: Vehicle?
@@ -63,6 +64,21 @@ struct ProfileView: View {
         .sheet(isPresented: $showingVehicleManager) {
             VehiclesView()
                 .environmentObject(AuthManager())
+        }
+        .sheet(isPresented: $showingVehicleOnboarding) {
+            VehicleOnboardingView { newVehicle in
+                Task {
+                    do {
+                        // Create the new vehicle
+                        try await viewModel.createVehicle(newVehicle)
+                        // Refresh user data to update the vehicles list
+                        await viewModel.fetchUserData()
+                    } catch {
+                        print("Error creating vehicle: \(error)")
+                    }
+                }
+            }
+            .environmentObject(AuthManager())
         }
         .sheet(isPresented: $showingAchievements) {
             AchievementsGridView()
@@ -177,28 +193,36 @@ struct ProfileView: View {
                 Text("Edit Profile")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .frame(height: 36)
                     .frame(minWidth: 120)
                     .background(
                         RoundedRectangle(cornerRadius: 18)
-                            .fill(DesignSystem.Colors.accentGradient)
+                            .fill(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
                     )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
             }
             
             NavigationLink(destination: FindFriendsView()) {
                 Text("Find Friends")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .frame(height: 36)
                     .frame(minWidth: 120)
                     .background(
                         RoundedRectangle(cornerRadius: 18)
-                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                            .background(Color.black.opacity(0.3))
-                            .cornerRadius(18)
+                            .fill(Color.white.opacity(0.9))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
                     )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
             }
         }
     }
@@ -216,7 +240,7 @@ struct ProfileView: View {
                             .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
                         
                         Rectangle()
-                            .fill(selectedTab == tab ? DesignSystem.Colors.accentGradient : LinearGradient(colors: [Color.clear], startPoint: .leading, endPoint: .trailing))
+                            .fill(selectedTab == tab ? Color.black : Color.clear)
                             .frame(height: 2)
                     }
                 }
@@ -267,11 +291,16 @@ struct ProfileView: View {
                         Text("Create a Meet")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
-                            .background(DesignSystem.Colors.accentGradient)
+                            .background(Color.white)
                             .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
                     }
                     .padding(.top, 8)
                 }
@@ -312,16 +341,21 @@ struct ProfileView: View {
                         .multilineTextAlignment(.center)
                     
                     Button {
-                        showingVehicleManager = true
+                        showingVehicleOnboarding = true
                     } label: {
                         Text("Add a Vehicle")
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
-                            .background(DesignSystem.Colors.accentGradient)
+                            .background(Color.white)
                             .cornerRadius(20)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
                     }
                     .padding(.top, 8)
                 }
@@ -423,7 +457,7 @@ struct ProfileView: View {
                         .foregroundColor(.white)
                 } icon: {
                     Image(systemName: "person.fill")
-                        .foregroundColor(Theme.Colors.accent)
+                        .foregroundColor(Color.white)
                 }
                 
                 Text(viewModel.currentUser?.profile.bio ?? "No bio yet. Edit your profile to add one.")
@@ -443,7 +477,7 @@ struct ProfileView: View {
                         .foregroundColor(.white)
                 } icon: {
                     Image(systemName: "location.fill")
-                        .foregroundColor(Theme.Colors.accent)
+                        .foregroundColor(Color.white)
                 }
                 
                 Text(viewModel.currentUser?.profile.location.address ?? "Location not set")
@@ -463,7 +497,7 @@ struct ProfileView: View {
                         .foregroundColor(.white)
                 } icon: {
                     Image(systemName: "clock.fill")
-                        .foregroundColor(Theme.Colors.accent)
+                        .foregroundColor(Color.white)
                 }
                 
                 if viewModel.recentActivity.isEmpty {
@@ -479,7 +513,7 @@ struct ProfileView: View {
                         ForEach(viewModel.recentActivity) { activity in
                             HStack(spacing: 16) {
                                 Image(systemName: activity.type.icon)
-                                    .foregroundColor(Theme.Colors.accent)
+                                    .foregroundColor(Color.white)
                                     .frame(width: 24)
                                 
                                 VStack(alignment: .leading, spacing: 3) {
@@ -520,10 +554,17 @@ struct ProfileView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .foregroundColor(.white)
+                .foregroundColor(.black)
                 .padding(8)
-                .background(Color.black.opacity(0.3))
-                .clipShape(Circle())
+                .background(
+                    Circle()
+                        .fill(Color.white)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
         }
     }
 }
@@ -602,16 +643,17 @@ struct AchievementGridItem: View {
         VStack(alignment: .center, spacing: 5) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient(
-                        gradient: Gradient(colors: [.blue.opacity(0.6), .purple.opacity(0.6)]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
+                    .fill(Color.white)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                     .frame(width: 40, height: 40)
                 
                 Image(systemName: achievement.icon)
                     .font(.system(size: 20))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
             }
             
             Text(achievement.title)
@@ -641,7 +683,7 @@ struct QuickActionButton: View {
             VStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 24))
-                    .foregroundColor(Theme.Colors.accent)
+                    .foregroundColor(.black)
                 
                 Text(title)
                     .font(.subheadline)

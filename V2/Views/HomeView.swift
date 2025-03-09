@@ -15,7 +15,7 @@ struct HomeView: View {
     // Tab visibility state
     @State private var isActiveTab = false
     @State private var isInTransition = false
-    @State private var shouldPreloadImages = false
+    @State private var shouldPreloadImages = true
     
     // Scroll state
     @State private var isAtScrollBoundary = false
@@ -238,12 +238,19 @@ struct HomeView: View {
         }) {
             Image(systemName: "plus")
                 .font(.title2.weight(.semibold))
-                .foregroundColor(.white)
+                .foregroundColor(.black)
                 .frame(width: 60, height: 60)
-                .background(MeetSpotColors.accentGradient)
-                .clipShape(Circle())
+                .background(
+                    Circle()
+                        .fill(Color.white)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                 .ifNotInTransition(!isInTransition) { view in
-                    view.mediumShadow()
+                    view
                 }
         }
         .padding()
@@ -431,7 +438,7 @@ struct HomeView: View {
                         
                         if selectedFeedTab == index {
                             Circle()
-                                .fill(MeetSpotColors.pink500)
+                                .fill(Color.white)
                                 .frame(width: 6, height: 6)
                         } else {
                             Circle()
@@ -645,13 +652,18 @@ struct HomeView: View {
                     Text("View Details")
                         .font(.headline)
                         .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(MeetSpotColors.accentGradient)
+                        .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.medium))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.medium)
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                         .ifNotInTransition(!isInTransition) { view in
-                            view.mediumShadow()
+                            view
                         }
                 }
                 .padding(.top, 8)
@@ -760,9 +772,8 @@ struct HomeView: View {
         meetViewModel.setScrollBoundaryState(false)
         meetViewModel.clearAllTransitionalStates()
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            shouldPreloadImages = true
-        }
+        // Ensure images load immediately
+        shouldPreloadImages = true
         
         startNotificationRefreshTimer()
     }
@@ -829,28 +840,39 @@ struct HomeView: View {
     // Tab notification handlers
     private func handleTabWillChange(_ notification: Foundation.Notification) {
         if let userInfo = notification.userInfo as? [String: Any],
-           let to = userInfo["to"] as? String {
+           let _ = userInfo["to"] as? String,
+           let _ = userInfo["from"] as? String {
             
-            if to == "home" || to != "home" {
-                withoutAnimation {
-                    isInTransition = true
-                }
+            // Always set isInTransition for any tab change
+            withoutAnimation {
+                isInTransition = true
+                
+                // Stop any ongoing animations or timers that might interfere with transition
+                meetViewModel.pauseAllBackgroundOperations()
             }
         }
     }
     
     private func handleTabDidChange(_ notification: Foundation.Notification) {
         if let userInfo = notification.userInfo as? [String: Any],
-           let to = userInfo["to"] as? String {
+           let to = userInfo["to"] as? String,
+           let _ = userInfo["from"] as? String {
             
-            if to == "home" {
-                isActiveTab = true
-                withoutAnimation {
-                    isInTransition = false
-                }
-            } else {
-                withoutAnimation {
-                    isInTransition = false
+            // Update active state based on current tab
+            withoutAnimation {
+                isActiveTab = (to == "home")
+                
+                // Use a slight delay to ensure the transition has completed
+                // before allowing interaction again
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    withoutAnimation {
+                        self.isInTransition = false
+                        
+                        // Resume background operations if this is the active tab
+                        if to == "home" {
+                            self.meetViewModel.resumeAllBackgroundOperations()
+                        }
+                    }
                 }
             }
         }
@@ -860,6 +882,13 @@ struct HomeView: View {
     private func handlePauseImageLoading() {
         withoutAnimation {
             isInTransition = true
+        }
+        
+        // Automatically resume after a short delay to prevent stuck state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if isInTransition {
+                handleResumeImageLoading()
+            }
         }
     }
     
@@ -879,27 +908,17 @@ struct NotificationButton: View {
         ZStack(alignment: .topTrailing) {
             Image(systemName: "bell.fill")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(.black)
                 .padding(MeetSpotStyle.Spacing.small)
                 .background(
                     Circle()
-                        .fill(Material.ultraThinMaterial)
+                        .fill(Color.white)
                         .overlay(
                             Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [
-                                            MeetSpotColors.pink500.opacity(0.7),
-                                            MeetSpotColors.purple900.opacity(0.5)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1.5
-                                )
+                                .stroke(Color.black, lineWidth: 1.5)
                         )
                 )
-                .mediumShadow()
+                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                 .scaleEffect(isAnimating ? 1.1 : 1.0)
                 .animation(
                     count > 0 ? 
@@ -953,27 +972,6 @@ struct ContentSizePreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
-    }
-}
-
-// View extensions
-extension View {
-    func withoutAnimation(_ action: @escaping () -> Void) {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        transaction.animation = nil
-        withTransaction(transaction) {
-            action()
-        }
-    }
-    
-    @ViewBuilder
-    func ifNotInTransition<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
     }
 }
 

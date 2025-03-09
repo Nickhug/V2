@@ -75,18 +75,16 @@ struct WelcomeView: View {
                         }) {
                             Text("Get Started")
                                 .font(.headline)
-                                .foregroundColor(.white)
+                                .foregroundColor(.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 18)
-                                .background(
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
+                                .background(Color.white)
                                 .cornerRadius(16)
-                                .shadow(color: MeetSpotColors.pink500.opacity(0.5), radius: 10, x: 0, y: 5)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.black, lineWidth: 1.5)
+                                )
+                                .shadow(color: Color.black.opacity(0.2), radius: 5, x: 0, y: 3)
                         }
                         
                         // Login button with glass style
@@ -180,19 +178,17 @@ private struct FeatureCard: View {
             // Animated icon
             Image(systemName: icon)
                 .font(.system(size: 28))
-                .foregroundColor(.white)
+                .foregroundColor(.black)
                 .frame(width: 56, height: 56)
                 .background(
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                        .fill(Color.white)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black, lineWidth: 1.5)
                         )
                 )
-                .shadow(color: MeetSpotColors.pink500.opacity(0.3), radius: 8, x: 0, y: 4)
+                .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
             
             // Text content
             VStack(alignment: .leading, spacing: 4) {

@@ -53,11 +53,15 @@ struct ExploreView: View {
                             }) {
                                 Image(systemName: "plus")
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.white)
+                                    .foregroundColor(.black)
                                     .frame(width: 50, height: 50)
-                                    .background(MeetSpotColors.accentGradient)
+                                    .background(Color.white)
                                     .clipShape(Circle())
-                                    .pronouncedShadow()
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.black, lineWidth: 1.5)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
                             }
                             .padding(.trailing, 16)
                             .padding(.bottom, 100)
@@ -161,7 +165,7 @@ struct ExploreView: View {
                 }) {
                     Image(systemName: isShowingMap ? "list.bullet" : "map")
                         .font(.title3)
-                        .foregroundColor(MeetSpotColors.pink500)
+                        .foregroundColor(Color.white)
                 }
                 
                 Text("Explore Meets")
@@ -753,12 +757,16 @@ struct PrimaryButton: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.headline)
-            .foregroundColor(.white)
+            .foregroundColor(.black)
             .padding(.horizontal, MeetSpotStyle.Spacing.large)
             .padding(.vertical, MeetSpotStyle.Spacing.medium)
-            .background(MeetSpotColors.primaryGradient)
+            .background(Color.white)
             .cornerRadius(MeetSpotStyle.Radius.large)
-            .shadow(radius: 10)
+            .overlay(
+                RoundedRectangle(cornerRadius: MeetSpotStyle.Radius.large)
+                    .stroke(Color.black, lineWidth: 1.5)
+            )
+            .shadow(color: Color.black.opacity(0.15), radius: 5, x: 0, y: 2)
     }
 }
 
@@ -884,7 +892,7 @@ private struct MeetSearchResultRow: View {
             HStack {
                 Image(systemName: "car.fill")
                     .font(.title2)
-                    .foregroundColor(MeetSpotColors.pink500)
+                    .foregroundColor(Color.white)
                 
                 VStack(alignment: .leading) {
                     Text(meet.title)

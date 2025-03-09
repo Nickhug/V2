@@ -70,6 +70,10 @@ class MeetViewModel: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private let locationManager = LocationManager()
     
+    // Add state to track if background operations are paused
+    private var areBackgroundOperationsPaused = false
+    private var backgroundTimers: [Timer] = []
+    
     init() {
         // Initialize without async calls
         setupInitialState()
@@ -1286,6 +1290,52 @@ class MeetViewModel: ObservableObject {
             // Force UI update
             objectWillChange.send()
         }
+    }
+    
+    // Method to pause all background operations during transitions
+    func pauseAllBackgroundOperations() {
+        areBackgroundOperationsPaused = true
+        
+        // Cancel any active timers
+        backgroundTimers.forEach { $0.invalidate() }
+        backgroundTimers.removeAll()
+        
+        // Cancel any ongoing network requests if needed
+        // This depends on how you're handling network requests
+        // For URLSession tasks, you would need to store and cancel them here
+    }
+    
+    // Method to resume background operations after transitions
+    func resumeAllBackgroundOperations() {
+        areBackgroundOperationsPaused = false
+        
+        // Restart any necessary background operations
+        // If there are timers or background tasks that need to be resumed,
+        // reinitialize them here
+    }
+    
+    // Helper to check if operations are allowed
+    func canPerformBackgroundOperation() -> Bool {
+        return !areBackgroundOperationsPaused
+    }
+    
+    // Add the createVehicle method
+    
+    func createVehicle(_ vehicle: Vehicle) async throws {
+        isLoading = true
+        
+        do {
+            // Use the SupabaseService to add the vehicle to the database
+            _ = try await supabase.addVehicle(vehicle)
+            
+            // If successful, refresh the current user data to include the new vehicle
+            await fetchUserData()
+        } catch {
+            self.error = MeetError.networkError
+            throw error
+        }
+        
+        isLoading = false
     }
 }
 

@@ -25,7 +25,7 @@ struct TabBar: View {
                             Image(systemName: selectedIndex == index ? item.selectedIcon : item.icon)
                                 .font(.system(size: 24))
                                 .foregroundColor(
-                                    selectedIndex == index ? Theme.Colors.accent : Theme.Colors.textSecondary
+                                    selectedIndex == index ? Color.white : Theme.Colors.textSecondary
                                 )
                             
                             if let badgeCount = item.badgeCount, badgeCount > 0 {
@@ -42,7 +42,7 @@ struct TabBar: View {
                         Text(item.title)
                             .font(.system(size: 12))
                             .foregroundColor(
-                                selectedIndex == index ? Theme.Colors.accent : Theme.Colors.textSecondary
+                                selectedIndex == index ? Color.white : Theme.Colors.textSecondary
                             )
                     }
                     .frame(maxWidth: .infinity)

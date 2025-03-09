@@ -422,7 +422,7 @@ struct FindFriendsView: View {
                 
                 // Indicator for selected tab
                 Rectangle()
-                    .fill(selectedTab == tag ? MeetSpotColors.pink500 : Color.clear)
+                    .fill(selectedTab == tag ? Color.white : Color.clear)
                     .frame(height: 3)
                     .cornerRadius(1.5)
             }

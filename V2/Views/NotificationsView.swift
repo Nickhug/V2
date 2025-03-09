@@ -126,12 +126,17 @@ struct EnhancedNotificationRow: View {
             // Icon with background
             ZStack {
                 Circle()
-                    .fill(Color(hex: notification.iconBackground))
+                    .fill(Color.white)
                     .frame(width: 40, height: 40)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                 
                 Image(systemName: notification.icon)
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
             }
             
             // Content

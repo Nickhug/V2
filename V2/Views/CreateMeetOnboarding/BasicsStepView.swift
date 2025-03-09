@@ -12,160 +12,131 @@ struct BasicsStepView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background decoration
-            Circle()
-                .fill(MeetSpotColors.pink500.opacity(0.1))
-                .frame(width: 300, height: 300)
-                .blur(radius: 80)
-                .offset(x: -150, y: -100)
-            
-            Circle()
-                .fill(MeetSpotColors.purple900.opacity(0.1))
-                .frame(width: 250, height: 250)
-                .blur(radius: 60)
-                .offset(x: 150, y: 300)
-                
-            // Main content
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    HStack {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Basic Information")
-                                .font(.title)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                            
-                            Text("Let's start with the essential details")
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
-                        }
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Basic Information")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
                         
-                        Spacer()
-                        
-                        Image(systemName: CreateMeetStep.basics.systemIcon)
-                            .font(.system(size: 40))
-                            .foregroundColor(MeetSpotColors.pink500)
-                            .opacity(animateElements ? 1 : 0)
-                            .rotationEffect(.degrees(animateElements ? 0 : -30))
-                            .offset(y: animateElements ? 0 : -10)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2), value: animateElements)
+                        Text("Let's start with the essential details")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.7))
                     }
-                    .padding(.top, 20)
                     
-                    // Form fields container
-                    VStack(spacing: 20) {
-                        // Title field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Meet Title")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            GlassmorphicComponents.TextField(
-                                text: $onboardingState.title,
-                                placeholder: "Enter a catchy title",
-                                icon: "textformat.alt",
-                                isFocused: focusedField == .title
-                            )
-                            .focused($focusedField, equals: .title)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
+                    Spacer()
+                    
+                    Image(systemName: CreateMeetStep.basics.systemIcon)
+                        .font(.system(size: 40))
+                        .foregroundColor(.white)
                         .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: animateElements)
+                        .rotationEffect(.degrees(animateElements ? 0 : -30))
+                        .offset(y: animateElements ? 0 : -10)
+                        .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.2), value: animateElements)
+                }
+                .padding(.top, 20)
+                
+                // Form fields container
+                VStack(spacing: 20) {
+                    // Title field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Meet Title")
+                            .font(.headline)
+                            .foregroundColor(.white)
                         
-                        // Description field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Description")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            GlassmorphicComponents.TextEditor(
-                                text: $onboardingState.description,
-                                placeholder: "Describe your meet...",
-                                icon: "text.quote",
-                                isFocused: focusedField == .description
-                            )
-                            .focused($focusedField, equals: .description)
-                            .frame(height: 120)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.2), value: animateElements)
+                        GlassmorphicComponents.TextField(
+                            text: $onboardingState.title,
+                            placeholder: "Enter a catchy title",
+                            icon: "textformat.alt",
+                            isFocused: focusedField == .title
+                        )
+                        .focused($focusedField, equals: .title)
+                    }
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: animateElements)
+                    
+                    // Description field
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Description")
+                            .font(.headline)
+                            .foregroundColor(.white)
                         
-                        // Date picker
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Date & Time")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            GlassmorphicComponents.DatePicker(
-                                date: $onboardingState.date,
-                                icon: "calendar"
-                            )
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3), value: animateElements)
+                        GlassmorphicComponents.TextEditor(
+                            text: $onboardingState.description,
+                            placeholder: "Describe your meet...",
+                            icon: "text.quote",
+                            isFocused: focusedField == .description
+                        )
+                        .focused($focusedField, equals: .description)
+                        .frame(height: 120)
+                    }
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.2), value: animateElements)
+                    
+                    // Date picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Date & Time")
+                            .font(.headline)
+                            .foregroundColor(.white)
                         
-                        // Meet type selector
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Meet Type")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            HStack(spacing: 12) {
-                                ForEach(V2MeetType.allCases, id: \.self) { type in
-                                    MeetTypeButton(
-                                        type: type,
-                                        isSelected: onboardingState.meetType == type,
-                                        action: {
-                                            withAnimation(.spring()) {
-                                                onboardingState.meetType = type
-                                            }
+                        GlassmorphicComponents.DatePicker(
+                            date: $onboardingState.date,
+                            icon: "calendar"
+                        )
+                    }
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3), value: animateElements)
+                    
+                    // Meet type selector
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Meet Type")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        HStack(spacing: 12) {
+                            ForEach(V2MeetType.allCases, id: \.self) { type in
+                                MeetTypeButton(
+                                    type: type,
+                                    isSelected: onboardingState.meetType == type,
+                                    action: {
+                                        withAnimation(.spring()) {
+                                            onboardingState.meetType = type
                                         }
-                                    )
-                                    .frame(maxWidth: .infinity)
-                                }
+                                    }
+                                )
+                                .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.4), value: animateElements)
-                        
-                        // Capacity selector
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Capacity")
-                                .font(.headline)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            CapacitySelector(capacity: $onboardingState.capacity)
-                        }
-                        .padding(.horizontal)
-                        .offset(x: animateElements ? 0 : -50)
-                        .opacity(animateElements ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.5), value: animateElements)
-                        
-                        Spacer(minLength: 60)
                     }
-                    .padding(.vertical, 20)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Material.ultraThinMaterial)
-                            .backgroundStyle(Color.black.opacity(0.3))
-                    )
-                    .mediumShadow()
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.4), value: animateElements)
+                    
+                    // Capacity selector
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Capacity")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        CapacitySelector(capacity: $onboardingState.capacity)
+                    }
+                    .offset(x: animateElements ? 0 : -50)
+                    .opacity(animateElements ? 1 : 0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.5), value: animateElements)
                 }
+                .padding(.vertical, 20)
                 .padding(.horizontal)
-                .padding(.bottom, 100)
             }
+            .padding(.horizontal)
+            .padding(.bottom, 100)
         }
         .onAppear {
-            withAnimation {
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.7)) {
                 animateElements = true
             }
         }
@@ -183,7 +154,7 @@ struct CapacitySelector: View {
         HStack {
             Image(systemName: "person.3.fill")
                 .font(.system(size: 20))
-                .foregroundColor(MeetSpotColors.pink500)
+                .foregroundColor(.white)
                 .frame(width: 24, height: 24)
             
             Spacer()
@@ -221,13 +192,11 @@ struct CapacitySelector: View {
             }
         }
         .padding()
-        .background(
+        .background(.ultraThinMaterial)
+        .cornerRadius(12)
+        .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Material.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                )
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
         )
     }
     
@@ -241,7 +210,9 @@ struct CapacitySelector: View {
 // Preview
 struct BasicsStepView_Previews: PreviewProvider {
     static var previews: some View {
-        BasicsStepView(onboardingState: CreateMeetOnboardingState())
-            .preferredColorScheme(.dark)
+        ZStack {
+            Color.black // Simulating the background
+            BasicsStepView(onboardingState: CreateMeetOnboardingState())
+        }
     }
 } 

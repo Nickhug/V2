@@ -24,15 +24,15 @@ struct FilterChip: View {
             .frame(height: 32)
             .foregroundColor(isSelected ? Theme.Colors.text : Theme.Colors.textSecondary)
             .background(
-                isSelected ? Theme.Colors.accent.opacity(0.2) : Theme.Colors.surface.opacity(0.3)
+                isSelected ? Color.white.opacity(0.2) : Theme.Colors.surface.opacity(0.3)
             )
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
                     .stroke(
-                        isSelected ? Theme.Colors.accent : Theme.Colors.surface,
-                        lineWidth: 1
+                        isSelected ? Color.black : Theme.Colors.surface,
+                        lineWidth: isSelected ? 1.5 : 1
                     )
             )
         }

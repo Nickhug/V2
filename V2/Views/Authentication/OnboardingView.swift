@@ -440,7 +440,7 @@ struct PreferencesOnboardingStep: View {
                 // Notifications
                 PreferenceToggle(
                     icon: "bell.fill",
-                    iconColor: .orange,
+                    iconColor: .black,
                     title: "Notifications",
                     description: "Receive alerts about meets, invites, and messages",
                     isOn: $viewModel.onboardingState.preferences.notificationsEnabled,
@@ -451,7 +451,7 @@ struct PreferencesOnboardingStep: View {
                 // Location sharing
                 PreferenceToggle(
                     icon: "location.circle.fill",
-                    iconColor: .green,
+                    iconColor: .black,
                     title: "Location Sharing",
                     description: "Allow location sharing for meets and nearby events",
                     isOn: $viewModel.onboardingState.preferences.locationSharingEnabled,

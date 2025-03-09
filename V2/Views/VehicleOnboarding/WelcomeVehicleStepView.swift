@@ -5,20 +5,7 @@ struct WelcomeVehicleStepView: View {
     @State private var animateElements = false
     
     var body: some View {
-        ZStack {
-            // Background decoration
-            Circle()
-                .fill(MeetSpotColors.pink500.opacity(0.1))
-                .frame(width: 300, height: 300)
-                .blur(radius: 80)
-                .offset(x: -150, y: -100)
-            
-            Circle()
-                .fill(MeetSpotColors.purple900.opacity(0.1))
-                .frame(width: 250, height: 250)
-                .blur(radius: 60)
-                .offset(x: 150, y: 300)
-            
+        ScrollView {
             // Main content
             VStack(spacing: 40) {
                 // Animated welcome car icon
@@ -28,8 +15,8 @@ struct WelcomeVehicleStepView: View {
                         .fill(
                             RadialGradient(
                                 gradient: Gradient(colors: [
-                                    MeetSpotColors.pink500.opacity(0.7),
-                                    MeetSpotColors.pink500.opacity(0.0)
+                                    Color.white.opacity(0.15),
+                                    Color.white.opacity(0.0)
                                 ]),
                                 center: .center,
                                 startRadius: 50,
@@ -45,7 +32,7 @@ struct WelcomeVehicleStepView: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 80, height: 80)
                         .foregroundColor(.white)
-                        .shadow(color: MeetSpotColors.pink500.opacity(0.5), radius: 15, x: 0, y: 0)
+                        .shadow(color: Color.white.opacity(0.5), radius: 15, x: 0, y: 0)
                         .scaleEffect(animateElements ? 1 : 0.5)
                         .opacity(animateElements ? 1 : 0)
                 }
@@ -82,24 +69,23 @@ struct WelcomeVehicleStepView: View {
                         
                         Image(systemName: "arrow.right")
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [MeetSpotColors.pink500, MeetSpotColors.purple900]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+                    .padding(.vertical, 16)
+                    .background(Color.white)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.black, lineWidth: 1.5)
                     )
-                    .cornerRadius(16)
-                    .shadow(color: MeetSpotColors.pink500.opacity(0.5), radius: 15, x: 0, y: 8)
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 2)
                     .offset(y: animateElements ? 0 : 20)
                     .opacity(animateElements ? 1 : 0)
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 24)
             }
+            .padding(.bottom, 100)
         }
         .onAppear {
             withAnimation(.spring(response: 0.8, dampingFraction: 0.7).delay(0.1)) {

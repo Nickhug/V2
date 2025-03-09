@@ -28,16 +28,17 @@ struct FriendsView: View {
                     }) {
                         Image(systemName: "magnifyingglass")
                             .font(.title2)
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(8)
                             .background(
                                 Circle()
-                                    .fill(Material.ultraThinMaterial)
+                                    .fill(Color.white)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.black, lineWidth: 1.5)
                                     )
                             )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                     }
                     
                     // Filter button
@@ -46,16 +47,17 @@ struct FriendsView: View {
                     }) {
                         Image(systemName: "line.3.horizontal.decrease")
                             .font(.title2)
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                             .padding(8)
                             .background(
                                 Circle()
-                                    .fill(Material.ultraThinMaterial)
+                                    .fill(Color.white)
                                     .overlay(
                                         Circle()
-                                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.black, lineWidth: 1.5)
                                     )
                             )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                     }
                 }
                 .padding()
@@ -145,7 +147,11 @@ struct CategoryButton: View {
                 Group {
                     if isSelected {
                         Capsule()
-                            .fill(MeetSpotColors.accentGradient)
+                            .fill(Color.white)
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
                     } else {
                         Capsule()
                             .fill(Material.ultraThinMaterial)
@@ -156,7 +162,7 @@ struct CategoryButton: View {
                     }
                 }
             )
-            .foregroundColor(.white)
+            .foregroundColor(isSelected ? .black : .white)
             .mediumShadow()
         }
     }
@@ -173,13 +179,17 @@ struct FriendCard: View {
             // Avatar
             ZStack {
                 Circle()
-                    .fill(MeetSpotColors.accentGradient)
+                    .fill(Color.white)
                     .frame(width: 50, height: 50)
-                    .mediumShadow()
+                    .overlay(
+                        Circle()
+                            .stroke(Color.black, lineWidth: 1.5)
+                    )
+                    .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                 
                 Image(systemName: avatarName)
                     .font(.system(size: 24))
-                    .foregroundColor(.white)
+                    .foregroundColor(.black)
                 
                 // Online indicator
                 if status == "Active now" {
@@ -215,13 +225,17 @@ struct FriendCard: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(Material.ultraThinMaterial)
+                            .fill(Color.white)
                             .frame(width: 40, height: 40)
-                            .subtleShadow()
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                         
                         Image(systemName: "message.fill")
                             .font(.system(size: 16))
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                         
                         // Unread indicator
                         if hasUnreadMessage {
@@ -239,13 +253,17 @@ struct FriendCard: View {
                 }) {
                     ZStack {
                         Circle()
-                            .fill(Material.ultraThinMaterial)
+                            .fill(Color.white)
                             .frame(width: 40, height: 40)
-                            .subtleShadow()
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black, lineWidth: 1.5)
+                            )
+                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
                         
                         Image(systemName: "map.fill")
                             .font(.system(size: 16))
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
                     }
                 }
             }

@@ -82,19 +82,19 @@ struct MeetSpotColors {
     static let purple900 = Color(hex: "#4A1D96" as String)
     
     static let primaryGradient = LinearGradient(
-        colors: [Color(hex: "#7E22CE" as String), Color(hex: "#3B0764" as String)],
+        colors: [Color.white, Color.white],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
     
     static let secondaryGradient = LinearGradient(
-        colors: [Color(hex: "#C026D3" as String), Color(hex: "#7E22CE" as String)],
+        colors: [Color.white, Color.white],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
     
     static let accentGradient = LinearGradient(
-        colors: [Color(hex: "#FF4B93" as String), Color(hex: "#7E22CE" as String)],
+        colors: [Color.white, Color.white],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -168,11 +168,15 @@ struct MeetSpotUI {
         static func status(_ text: String) -> some View {
             Text(text)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(.black)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(MeetSpotColors.secondaryGradient)
+                .background(Color.white)
                 .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.black, lineWidth: 1)
+                )
         }
     }
     
@@ -180,24 +184,28 @@ struct MeetSpotUI {
         static func primary(_ text: String) -> some View {
             Text(text)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(MeetSpotColors.secondaryGradient)
-                .cornerRadius(12)
-        }
-        
-        static func secondary(_ text: String) -> some View {
-            Text(text)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "9333EA"))
+                .foregroundColor(.black)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color.white)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(MeetSpotColors.purple200, lineWidth: 1)
+                        .stroke(Color.black, lineWidth: 1.5)
+                )
+        }
+        
+        static func secondary(_ text: String) -> some View {
+            Text(text)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.black)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.8))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.black.opacity(0.7), lineWidth: 1)
                 )
         }
     }

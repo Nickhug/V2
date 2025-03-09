@@ -36,14 +36,14 @@ struct RoutesView: View {
                         }, label: {
                             Image(systemName: "line.3.horizontal.decrease.circle")
                                 .font(.system(size: 18))
-                                .foregroundColor(MeetSpotColors.pink500)
+                                .foregroundColor(Color.white)
                                 .frame(width: 44, height: 44)
                                 .background(
                                     Circle()
                                         .fill(Material.ultraThinMaterial)
                                         .overlay(
                                             Circle()
-                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                                .stroke(Color.black, lineWidth: 1.5)
                                         )
                                 )
                         })
@@ -88,9 +88,11 @@ struct RoutesView: View {
                             showingRouteEditor = true
                         } label: {
                             Image(systemName: "plus")
+                                .foregroundColor(.white)
                         }
                     }
                 }
+                .navigationBarAppearance(backgroundColor: .clear, textColor: .white)
                 .sheet(isPresented: $showingRouteEditor) {
                     RouteEditorView(onRouteSaved: { route in
                         // Refresh routes after saving

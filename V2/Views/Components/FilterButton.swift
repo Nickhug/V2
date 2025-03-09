@@ -16,14 +16,14 @@ struct FilterButton: View {
             Text(title)
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(style == .default ? (isSelected ? .white : .primary) : (isSelected ? .black : .white))
+                .foregroundColor(style == .default ? (isSelected ? .black : .primary) : (isSelected ? .black : .white))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
                     Group {
                         if style == .default {
                             if isSelected {
-                                DesignSystem.Colors.accentGradient
+                                Color.white
                             } else {
                                 Color(.systemGray6)
                             }
@@ -37,6 +37,10 @@ struct FilterButton: View {
                     }
                 )
                 .cornerRadius(20)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(isSelected ? Color.black : Color.clear, lineWidth: isSelected ? 1.5 : 0)
+                )
         }
     }
 }
