@@ -40,8 +40,8 @@ struct DashboardView: View {
     
     var body: some View {
         ZStack {
-            // Solid black background that's always visible
-            Color.black.ignoresSafeArea()
+            // Replace solid black background with modern gradient
+            ModernGradientBackground()
             
             // Standard TabView with simplified background handling
             TabView(selection: $selectedTab) {
@@ -335,14 +335,8 @@ struct RSVPButton: View {
         } label: {
             HStack(spacing: 8) {
                 if isLoading {
-                    // Pure SwiftUI loading indicator
-                    Circle()
-                        .trim(from: 0, to: 0.7)
-                        .stroke(Color.white, lineWidth: 2)
-                        .frame(width: 18, height: 18)
-                        .rotationEffect(Angle(degrees: 270))
-                        .rotationEffect(Angle(degrees: isLoading ? 360 : 0))
-                        .animation(Animation.linear(duration: 1).repeatForever(autoreverses: false), value: isLoading)
+                    // Use consistent LoadingSpinner component
+                    LoadingSpinner(color: .white, lineWidth: 2, size: 18)
                 } else {
                     Image(systemName: isAttending ? "checkmark.circle.fill" : "plus.circle.fill")
                         .font(.system(size: 18))

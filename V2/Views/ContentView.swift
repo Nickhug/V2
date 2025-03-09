@@ -8,10 +8,11 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             // Add animated gradient background at the root level
-            AnimatedGradientBackground()
+            ModernGradientBackground()
             
             if isLoading {
                 LoadingView()
+                    .transition(.opacity)
             } else {
                 Group {
                     if authManager.isAuthenticated {
@@ -20,6 +21,7 @@ struct ContentView: View {
                         AuthFlowView()
                     }
                 }
+                .transition(.opacity)
             }
         }
         .task {
@@ -37,8 +39,10 @@ struct ContentView: View {
 
 // Loading/splash screen
 struct LoadingView: View {
+    // Animation states
     @State private var pulsate = false
-    @State private var rotation = 0.0
+    @State private var isRotating = false
+    @State private var animationPhase = 0
     
     var body: some View {
         VStack {
@@ -48,32 +52,45 @@ struct LoadingView: View {
                 .frame(width: 120, height: 120)
                 .shadow(color: MeetSpotColors.pink500.opacity(0.6), radius: 15, x: 0, y: 8)
                 .scaleEffect(pulsate ? 1.05 : 1.0)
+                .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: pulsate)
             
             Text("MeetSpot")
                 .font(.system(size: 32, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
                 .padding(.top, 16)
             
-            // Basic Circle loading spinner instead of ProgressView to avoid UIKit adapter
+            // Improved Circle loading spinner with continuous animation
             Circle()
                 .trim(from: 0, to: 0.7)
                 .stroke(Color.white, lineWidth: 3)
                 .frame(width: 30, height: 30)
                 .rotationEffect(Angle(degrees: 270))
-                .rotationEffect(Angle(degrees: rotation))
+                .rotationEffect(Angle(degrees: isRotating ? 360 : 0))
+                .animation(
+                    Animation.linear(duration: 1.0)
+                        .repeatForever(autoreverses: false), 
+                    value: isRotating
+                )
                 .padding(.top, 32)
         }
         .onAppear {
-            // Start the pulsing animation
-            withAnimation(Animation.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
-                pulsate = true
-            }
+            // Trigger animations with a small delay between them
+            pulsate = true
             
-            // Start the loading spinner animation
-            withAnimation(Animation.linear(duration: 1).repeatForever(autoreverses: false)) {
-                rotation = 360
-            }
+            // Ensure the rotation animation starts and continues
+            isRotating = true
         }
+    }
+}
+
+// Add a standalone preview for LoadingView to better test the animation
+struct LoadingView_Previews: PreviewProvider {
+    static var previews: some View {
+        ZStack {
+            ModernGradientBackground()
+            LoadingView()
+        }
+        .previewDisplayName("Loading Screen")
     }
 }
 

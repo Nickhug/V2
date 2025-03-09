@@ -30,8 +30,8 @@ struct HomeView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color.black.ignoresSafeArea()
+            // Background - replace with modern gradient
+            ModernGradientBackground()
             
             // Main content
             VStack(spacing: 0) {
@@ -485,14 +485,9 @@ struct HomeView: View {
             
             if meets.isEmpty {
                 if viewModel.isLoading {
-                    // Loading state using a custom Circle animation instead of ProgressView
+                    // Loading state using an improved Circle animation
                     VStack {
-                        Circle()
-                            .trim(from: 0, to: 0.7)
-                            .stroke(Color.white, lineWidth: 3)
-                            .frame(width: 40, height: 40)
-                            .rotationEffect(Angle(degrees: 270))
-                            .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: UUID())
+                        LoadingSpinner(color: .white, lineWidth: 3, size: 40)
                     }
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
@@ -685,13 +680,8 @@ struct HomeView: View {
             Spacer()
             
             VStack(spacing: 12) {
-                // Custom animated loading indicator instead of ProgressView
-                Circle()
-                    .trim(from: 0, to: 0.7)
-                    .stroke(status.color, lineWidth: 2)
-                    .frame(width: 30, height: 30)
-                    .rotationEffect(Angle(degrees: 270))
-                    .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: UUID())
+                // Custom animated loading indicator with proper animation
+                LoadingSpinner(color: status.color, lineWidth: 2, size: 30)
                 
                 Text("Updating \(status.displayName.lowercased()) meets...")
                     .font(.subheadline)
@@ -911,23 +901,17 @@ struct NotificationButton: View {
                 )
                 .mediumShadow()
                 .scaleEffect(isAnimating ? 1.1 : 1.0)
+                .animation(
+                    count > 0 ? 
+                        Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true) : 
+                        .default,
+                    value: isAnimating
+                )
                 .onAppear {
-                    if count > 0 {
-                        withAnimation(Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                            isAnimating = true
-                        }
-                    } else {
-                        isAnimating = false
-                    }
+                    isAnimating = count > 0
                 }
                 .onChange(of: count) { _, newCount in
-                    if newCount > 0 && !isAnimating {
-                        withAnimation(Animation.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                            isAnimating = true
-                        }
-                    } else if newCount == 0 {
-                        isAnimating = false
-                    }
+                    isAnimating = newCount > 0
                 }
             
             if count > 0 {
