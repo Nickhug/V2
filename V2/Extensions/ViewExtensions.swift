@@ -3,6 +3,30 @@ import Foundation
 
 // MARK: - Common View Extensions
 extension View {
+    // MARK: - Debugging
+    
+    /// Adds a debug print statement that executes when the view appears
+    /// but doesn't affect the view hierarchy.
+    func debugPrint(_ message: String) -> some View {
+        self.background(
+            Color.clear
+                .onAppear {
+                    print("DEBUG: \(message)")
+                }
+        )
+    }
+    
+    /// Adds a debug print statement with a value that executes when the view appears
+    /// but doesn't affect the view hierarchy.
+    func debugPrint<T>(_ label: String, _ value: T) -> some View {
+        self.background(
+            Color.clear
+                .onAppear {
+                    print("DEBUG: \(label): \(value)")
+                }
+        )
+    }
+    
     // MARK: - RouteViewModel Support
     
     /// Provides a shared RouteViewModel to the view hierarchy

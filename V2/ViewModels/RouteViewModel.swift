@@ -2,6 +2,11 @@ import Foundation
 import MapKit
 import Combine
 import SwiftUI
+import CoreLocation
+import Supabase
+
+// Add explicit import for Services module to clarify LocationManager reference
+import CoreLocation
 
 @MainActor
 class RouteViewModel: ObservableObject {
@@ -21,8 +26,7 @@ class RouteViewModel: ObservableObject {
     @Published var isEditingRoute = false
     @Published var locationManager: LocationManager = {
         let manager = LocationManager()
-        // Initialize with a past time to ensure first request goes through
-        manager.lastRequestTime = Date(timeIntervalSince1970: 0)
+        // Reset manager property if needed
         return manager
     }()
     

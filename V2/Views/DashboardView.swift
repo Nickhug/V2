@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var viewModel = MeetViewModel()
     @StateObject private var routeViewModel = RouteViewModel()
+    @StateObject private var feedViewModel = FeedViewModel()
     @EnvironmentObject private var authManager: AuthManager
     @SceneStorage("selectedTab") private var selectedTab = "home" // Persist tab selection
     
@@ -25,10 +26,11 @@ struct DashboardView: View {
             .id("cached-explore")
     }
     
-    private var routesViewCache: some View {
-        RoutesView()
-            .environmentObject(routeViewModel)
-            .id("cached-routes")
+    private var feedViewCache: some View {
+        FeedView()
+            .environmentObject(feedViewModel)
+            .environmentObject(authManager)
+            .id("cached-feed")
     }
     
     private var profileViewCache: some View {
@@ -58,10 +60,9 @@ struct DashboardView: View {
                         .opacity(selectedTab == "explore" ? 1 : 0) 
                         .allowsHitTesting(selectedTab == "explore")
                     
-                    routesViewCache
-                        .environmentObject(routeViewModel)
-                        .opacity(selectedTab == "routes" ? 1 : 0)
-                        .allowsHitTesting(selectedTab == "routes")
+                    feedViewCache
+                        .opacity(selectedTab == "feed" ? 1 : 0)
+                        .allowsHitTesting(selectedTab == "feed")
                     
                     profileViewCache
                         .environmentObject(viewModel)
@@ -90,7 +91,7 @@ struct DashboardView: View {
         HStack(spacing: 0) {
             tabButton(title: "Home", icon: "house.fill", tag: "home")
             tabButton(title: "Explore", icon: "magnifyingglass", tag: "explore")
-            tabButton(title: "Routes", icon: "map.fill", tag: "routes")
+            tabButton(title: "Feed", icon: "photo.on.rectangle", tag: "feed")
             tabButton(title: "Profile", icon: "person.fill", tag: "profile")
         }
         .padding(.vertical, 12)
@@ -134,7 +135,7 @@ struct DashboardView: View {
     private func fetchData() async {
         do {
             try await viewModel.fetchMeets()
-            await routeViewModel.fetchUserRoutes()
+            await feedViewModel.loadFeed()
             contentLoadingComplete = true
         } catch {
             errorMessage = "Error loading data: \(error.localizedDescription)"

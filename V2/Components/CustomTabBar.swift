@@ -1,7 +1,15 @@
 import SwiftUI
 
+// View model to manage tab state and data
+class MainTabViewModel: ObservableObject {
+    @Published var selectedTab: Tab = .discover
+    
+    // Add any tab coordination logic here
+}
+
 enum Tab: Int {
     case discover
+    case feed
     case vehicles
     case profile
     case settings
@@ -9,6 +17,7 @@ enum Tab: Int {
     var icon: String {
         switch self {
         case .discover: return "map.fill"
+        case .feed: return "photo.on.rectangle"
         case .vehicles: return "car.fill"
         case .profile: return "person.fill"
         case .settings: return "gear"
@@ -18,6 +27,7 @@ enum Tab: Int {
     var title: String {
         switch self {
         case .discover: return "Discover"
+        case .feed: return "Feed"
         case .vehicles: return "Vehicles"
         case .profile: return "Profile"
         case .settings: return "Settings"
@@ -26,10 +36,18 @@ enum Tab: Int {
 }
 
 struct MainTabView: View {
-    @State private var selectedTab: Tab = .discover
-    @StateObject private var discoverViewModel = DiscoverViewModel()
-    @StateObject private var meetViewModel = MeetViewModel()
+    @ObservedObject var viewModel: MainTabViewModel
     @StateObject private var vehicleViewModel = VehicleViewModel()
+    @StateObject private var discoverViewModel = DiscoverViewModel()
+    @StateObject private var feedViewModel = FeedViewModel()
+    @StateObject private var meetViewModel = MeetViewModel()
+    @EnvironmentObject var authManager: AuthManager
+    
+    // Initialize ProfileViewModel with required authManager
+    private var profileViewModel: ProfileViewModel {
+        ProfileViewModel(authManager: authManager)
+    }
+    
     @State private var showingVehicleOnboarding = false
     
     var body: some View {
@@ -39,12 +57,19 @@ struct MainTabView: View {
                 .ignoresSafeArea()
             
             // Standard iOS TabView with default styling
-            TabView(selection: $selectedTab) {
+            TabView(selection: $viewModel.selectedTab) {
                 DiscoverView(viewModel: discoverViewModel)
                     .tabItem {
                         Label(Tab.discover.title, systemImage: Tab.discover.icon)
                     }
                     .tag(Tab.discover)
+                
+                FeedView()
+                    .environmentObject(authManager)
+                    .tabItem {
+                        Label(Tab.feed.title, systemImage: Tab.feed.icon)
+                    }
+                    .tag(Tab.feed)
                 
                 // Only show the actual VehiclesView if the user has vehicles
                 Group {
@@ -72,7 +97,8 @@ struct MainTabView: View {
                     }
                     .tag(Tab.settings)
             }
-            .sheet(isPresented: $showingVehicleOnboarding) {
+            
+            if showingVehicleOnboarding {
                 VehicleOnboardingView { newVehicle in
                     Task {
                         do {
@@ -83,7 +109,7 @@ struct MainTabView: View {
                         }
                     }
                 }
-                .environmentObject(AuthManager())
+                .environmentObject(authManager)
             }
         }
         .onAppear {
@@ -98,7 +124,7 @@ struct MainTabView: View {
                 }
             }
         }
-        .onChange(of: selectedTab) { _, newTab in
+        .onChange(of: viewModel.selectedTab) { _, newTab in
             if newTab == .vehicles && vehicleViewModel.vehicles.isEmpty {
                 showingVehicleOnboarding = true
             }
@@ -127,5 +153,6 @@ struct VehicleOnboardingPlaceholder: View {
 }
 
 #Preview {
-    MainTabView()
+    MainTabView(viewModel: MainTabViewModel())
+        .environmentObject(AuthManager())
 } 

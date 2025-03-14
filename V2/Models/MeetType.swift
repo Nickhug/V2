@@ -22,7 +22,7 @@ enum V2MeetType: String, Codable, CaseIterable {
         case .car:
             return "car.side.fill"
         case .bike:
-            return "bicycle.circle.fill"
+            return "motorcycle"
         case .mixed:
             return "car.side.fill"
         }

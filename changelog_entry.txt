@@ -1,0 +1,9 @@
+# Version 1.0.16 (2025-03-25)
+
+## [FIX] Swift Compilation Errors in StoryCreationView.swift
+- Removed @preconcurrency annotations from AVFoundation and Photos imports
+- Fixed Swift 6 compatibility issues with strict concurrency checking
+- Addressed module build issues with Foundation and other core frameworks
+- Improved error handling in camera components to prevent build failures
+- Reference: StoryCreationView.swift, CameraComponents.swift
+

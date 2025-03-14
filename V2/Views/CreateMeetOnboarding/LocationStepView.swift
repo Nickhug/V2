@@ -4,7 +4,7 @@ import CoreLocation
 
 struct LocationStepView: View {
     @ObservedObject var onboardingState: CreateMeetOnboardingState
-    @StateObject private var locationManager = LocationManager()
+    @StateObject private var locationManager: LocationManager = LocationManager()
     @State private var animateElements = false
     @State private var searchText = ""
     @State private var searchResults: [MKMapItem] = []

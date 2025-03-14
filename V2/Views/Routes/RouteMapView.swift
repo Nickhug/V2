@@ -287,37 +287,207 @@ struct WaypointMarkerView: View {
 struct WaypointDetailSheet: View {
     var waypoint: Waypoint
     var isEditable: Bool
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationView {
-            Form {
-                waypointDetailsSection
+            ZStack {
+                // Background gradient
+                Theme.Colors.backgroundGradient
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: Theme.Spacing.large) {
+                        // Header with icon
+                        waypointHeaderView
+                        
+                        // Details card
+                        waypointDetailsCard
+                        
+                        // Coordinates and information card
+                        coordinatesCard
+                        
+                        // Action buttons (only for editable mode)
+                        if isEditable {
+                            actionButtons
+                        }
+                    }
+                    .padding()
+                }
             }
-            .navigationTitle("Waypoint Info")
+            .navigationTitle("Waypoint Details")
             .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-    
-    private var waypointDetailsSection: some View {
-        Section(header: Text("Waypoint Details")) {
-            LabeledContent("Title", value: waypoint.title)
-            
-            if let subtitle = waypoint.subtitle {
-                LabeledContent("Subtitle", value: subtitle)
-            }
-            
-            LabeledContent("Type", value: waypoint.type.rawValue.capitalized)
-            
-            LabeledContent("Coordinates") {
-                coordinatesView
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(Theme.Colors.accent)
+                }
             }
         }
     }
     
-    private var coordinatesView: some View {
-        VStack(alignment: .leading) {
-            Text("Lat: \(waypoint.coordinate.latitude, specifier: "%.6f")")
-            Text("Lon: \(waypoint.coordinate.longitude, specifier: "%.6f")")
+    private var waypointHeaderView: some View {
+        VStack(spacing: Theme.Spacing.medium) {
+            // Icon with colored background
+            ZStack {
+                Circle()
+                    .fill(waypoint.type.displayColor)
+                    .frame(width: 80, height: 80)
+                    .shadow(color: Theme.shadowColor, radius: Theme.shadowRadius * 0.5)
+                
+                Image(systemName: waypoint.type.systemIconName)
+                    .font(.system(size: 40, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            
+            // Title
+            Text(waypoint.title)
+                .font(Theme.Typography.heading2)
+                .foregroundColor(Theme.Colors.text)
+                .multilineTextAlignment(.center)
+            
+            // Type badge
+            Text(waypoint.type.rawValue.capitalized)
+                .font(.system(size: 14, weight: .medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(waypoint.type.displayColor.opacity(0.2))
+                .foregroundColor(waypoint.type.displayColor)
+                .clipShape(Capsule())
+        }
+    }
+    
+    private var waypointDetailsCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            HStack {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(Theme.Colors.accent)
+                Text("Details")
+                    .font(Theme.Typography.heading3)
+                    .foregroundColor(Theme.Colors.text)
+            }
+            
+            VStack(alignment: .leading, spacing: Theme.Spacing.small) {
+                detailRow(icon: "mappin.and.ellipse", title: "Title", value: waypoint.title)
+                
+                if let subtitle = waypoint.subtitle {
+                    detailRow(icon: "text.alignleft", title: "Description", value: subtitle)
+                }
+                
+                detailRow(icon: "tag.fill", title: "Type", value: waypoint.type.defaultTitle)
+            }
+            .padding()
+            .background(Theme.cardBackground)
+            .cornerRadius(Theme.CornerRadius.medium)
+            .shadow(color: Theme.shadowColor.opacity(0.1), radius: Theme.shadowRadius * 0.5)
+        }
+    }
+    
+    private var coordinatesCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+            HStack {
+                Image(systemName: "location.fill")
+                    .foregroundColor(Theme.Colors.accent)
+                Text("Coordinates")
+                    .font(Theme.Typography.heading3)
+                    .foregroundColor(Theme.Colors.text)
+            }
+            
+            VStack(alignment: .leading, spacing: Theme.Spacing.medium) {
+                coordinateRow(title: "Latitude", value: waypoint.coordinate.latitude)
+                coordinateRow(title: "Longitude", value: waypoint.coordinate.longitude)
+            }
+            .padding()
+            .background(Theme.cardBackground)
+            .cornerRadius(Theme.CornerRadius.medium)
+            .shadow(color: Theme.shadowColor.opacity(0.1), radius: Theme.shadowRadius * 0.5)
+        }
+    }
+    
+    private var actionButtons: some View {
+        HStack(spacing: Theme.Spacing.medium) {
+            Button(action: {
+                // Copy coordinates to clipboard
+                let coordinateString = "(\(waypoint.coordinate.latitude), \(waypoint.coordinate.longitude))"
+                UIPasteboard.general.string = coordinateString
+                // In a real app, we'd show a success message here
+            }) {
+                HStack {
+                    Image(systemName: "doc.on.doc")
+                    Text("Copy Coordinates")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Theme.Colors.surface)
+                .foregroundColor(Theme.Colors.text)
+                .cornerRadius(Theme.CornerRadius.medium)
+            }
+            
+            Button(action: {
+                // This would be linked to external map apps
+                let url = URL(string: "https://maps.apple.com/?ll=\(waypoint.coordinate.latitude),\(waypoint.coordinate.longitude)")
+                if let url = url, UIApplication.shared.canOpenURL(url) {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                HStack {
+                    Image(systemName: "map")
+                    Text("Open in Maps")
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Theme.Colors.accentGradient)
+                .foregroundColor(.white)
+                .cornerRadius(Theme.CornerRadius.medium)
+            }
+        }
+    }
+    
+    private func detailRow(icon: String, title: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.small) {
+            Image(systemName: icon)
+                .foregroundColor(Theme.Colors.accent)
+                .frame(width: 24)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                
+                Text(value)
+                    .font(.body)
+                    .foregroundColor(Theme.Colors.text)
+            }
+        }
+    }
+    
+    private func coordinateRow(title: String, value: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(Theme.Colors.textSecondary)
+            
+            HStack {
+                Text(String(format: "%.6f", value))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(Theme.Colors.text)
+                
+                Spacer()
+                
+                Button(action: {
+                    // Copy single coordinate to clipboard
+                    UIPasteboard.general.string = String(format: "%.6f", value)
+                    // In a real app, we'd show a success message here
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundColor(Theme.Colors.accent)
+                }
+            }
+            .padding(10)
+            .background(Theme.Colors.surface.opacity(0.5))
+            .cornerRadius(Theme.CornerRadius.small)
         }
     }
 }

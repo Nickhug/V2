@@ -5,6 +5,203 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12] - 2025-03-24
+
+### Fixed
+- [FIX] **Fixed camera UI feedback in StoryCreationView.swift:**
+  - Added missing UI transitions after photo/video capture
+  - Added haptic feedback when capturing photos and videos
+  - Fixed issue where caption sheet wasn't showing after media capture
+  - Ensured consistent behavior between initial and subsequent camera sessions
+  - [REF:StoryCreationView.swift]
+
+## [1.0.11] - 2025-03-23
+
+### Fixed
+- [FIX] **Fixed camera error handling in StoryCreationView.swift:**
+  - Resolved unreachable catch block by properly implementing a throwing wrapper for AVCaptureSession.startRunning()
+  - Fixed function scope issue by moving createTempURL() function before its first usage
+  - Added proper error detection for camera session failures
+  - Improved error handling for camera session startup
+  - Enhanced code documentation for future maintenance
+  - [REF:StoryCreationView.swift]
+
+## [Unreleased] - 2025-03-21
+
+### Fixed
+- [FIX] **Fixed camera grey screen issue in StoryCreationView.swift**:
+  - Resolved issue where camera would appear as a grey screen with no feed
+  - Added proper error handling for AVCaptureSession startup exceptions
+  - Implemented camera session recovery mechanism with automatic retry
+  - Enhanced session lifecycle management with app state notifications
+  - Added frame update handling for camera preview layer
+  - Fixed session initialization and start timing to prevent freezing
+  - Improved error logging for camera setup issues
+  - [REF:StoryCreationView.swift]
+
+- [FIX] **Improved loading indicators in StoryCreationView.swift**:
+  - Fixed awkward grey transparent box around the loading spinner
+  - Replaced standard ProgressView with custom LoadingSpinner for better visual appearance
+  - Added a clear text indication of "Processing media..." during the loading state
+  - Implemented proper state reset mechanisms to prevent endless loading spinner
+  - Added safety timeout (5 seconds) to automatically clear the loading state
+  - Ensured consistent UI styling across different loading states
+  - [REF:StoryCreationView.swift]
+
+- [FIX] **Fixed ambiguous initializer in PostCreationView**:
+  - Resolved "Ambiguous use of 'init()'" error in PostCreationView.swift
+  - Replaced AnimatedGradientBackground with ModernGradientBackground for consistent implementation
+  - Created dedicated LocationManager.swift service to avoid duplicate class implementations
+  - Improved code organization by centralizing location functionality into a single service
+  - [REF:PostCreationView.swift, LocationManager.swift]
+
+- [FIX] **Fixed additional compiler errors in Stories feature**:
+  - Added custom initializer to Story model for direct instance creation
+  - Implemented generic uploadStoryMedia method in SupabaseService
+  - Updated StoriesViewModel's uploadMedia method to use existing methods
+  - Fixed "Extra arguments" and "Missing argument" errors in Story initialization
+  - Standardized media upload pattern for both image and video content
+  - [REF:Story.swift, SupabaseService.swift, StoriesViewModel.swift]
+
+- [FIX] **Fixed compiler errors in Stories feature implementation**:
+  - Added missing CoreLocation import to SupabaseService.swift
+  - Resolved async/await usage in StoriesViewModel's sort method with synchronous implementation
+  - Fixed Story creation in StoriesViewModel with proper media handling methods
+  - Added uploadMedia helper method for handling both image and video uploads
+  - Fixed StoryCreationViewModel's NSObjectProtocol conformance by inheriting from NSObject
+  - Added @MainActor annotations to AVCaptureDelegate methods for Swift concurrency compliance
+  - Fixed unreachable catch block in StoryCreationViewModel
+  - Restructured media type handling in story creation process
+  - [REF:SupabaseService.swift, StoriesViewModel.swift, StoryCreationViewModel.swift]
+
+- [FIX] **Resolved AsyncImageView compatibility issues in Stories feature**:
+  - Fixed missing argument for 'imageName' parameter in StoriesBarView
+  - Fixed incorrect AsyncImageView usage in StoryPlayerView
+  - Removed duplicate AsyncImageView declaration to use project's existing component
+  - Ensured proper image loading for story avatars and user profiles
+  - [REF:StoriesBarView.swift, StoryPlayerView.swift]
+
+### Added
+- [FEATURE] **Added Instagram-like Stories feature to FeedView**:
+  - Created fullstack implementation with ephemeral 24-hour content
+  - Added stories table in database with proper indices
+  - Implemented RPC functions for story operations and viewing
+  - Created Story model with proper PostgreSQL point type handling
+  - Built UI components for displaying and viewing stories
+  - Added camera integration for photo and video capture
+  - Implemented story creation with location tagging
+  - Added progress tracking for story viewing duration
+  - Integrated swipe and tap navigation between stories
+  - Enabled media storage in Supabase
+  - [REF:FeedView, StoriesViewModel, SupabaseService, Story model, StoriesBarView, StoryPlayerView]
+
+## [Unreleased] - 2024-07-17
+
+### Added
+- [UI] **Completely redesigned MeetDetailView with premium UI/UX**:
+  - Implemented parallax hero image with responsive scrolling effects
+  - Added modern tabbed interface for Overview, Attendees, and Discussion
+  - Created glassmorphic cards with subtle animations throughout
+  - Enhanced map integration with directions support
+  - Modernized attendees display with vehicle info and profile pictures
+  - Implemented animated floating header that appears during scrolling
+  - Added context-aware action buttons (join/edit based on user role)
+  - Improved commenting system with modern action buttons
+  - Added native share sheet integration for meet sharing
+  - Created smooth animations for UI state transitions
+  - Optimized for performance and reduced compiler warnings
+  - Fixed type-checking error in fetchMeetComments method
+  - [REF:MeetDetailView.swift]
+
+- [UI] **Created modern JoinMeetView for meet participation**:
+  - Implemented rich vehicle selection interface with visual cards
+  - Added comprehensive meet info at the top for context
+  - Designed modern empty state when no vehicles are available
+  - Created animated success confirmation with checkmark animation
+  - Used glassmorphic UI components consistent with app design system
+  - Added attendee preview section to show current participation
+  - Provided error handling with clear user feedback
+  - [REF:JoinMeetView.swift]
+
+- [DATA] **Added test post data for Feed View testing**:
+  - Created three sample posts with varied content and images
+  - Added likes and comments to posts for full social interaction testing
+  - Included location data and captions with hashtags for filtering testing
+  - Used both test users to simulate social interaction between accounts
+  - [REF:FeedView, Post model, Supabase database]
+
+- [DATA] **Added Supabase Storage bucket for post images**:
+  - Created missing 'posts' storage bucket needed for post creation
+  - Fixed "Bucket not found" error when uploading post images
+  - Ensured proper naming convention consistent with other storage buckets
+  - Configured bucket with public access for image sharing
+  - [REF:Supabase, ImageUploadService.swift]
+
+- [FEATURE] **Replaced Routes tab with Posts Feed implementation**:
+  - Integrated existing FeedView as a primary navigation tab replacing Routes
+  - Updated DashboardView to include FeedViewModel and cache FeedView content
+  - Modified tab bar navigation structure to include Feed instead of Routes
+  - Changed Routes button in ExploreView to navigate to Feed tab
+  - Added proper inter-tab navigation through NotificationCenter
+  - Ensured proper data loading of FeedViewModel during app startup
+  - Maintained consistent UI with black and white design language
+  - [REF:DashboardView.swift, ExploreView.swift]
+
+- [DEV] **Enhanced network error debugging for Supabase connectivity issues**:
+  - Added comprehensive connection testing method to SupabaseService
+  - Integrated detailed error logging in ImageUploadService for post uploads
+  - Created test_connection database function to verify RPC functionality
+  - Added structured error categorization in FeedViewModel error handling
+  - Enhanced debugging for socket connection issues
+  - Improved JSON parsing error identification with specific error type detection
+  - [REF:SupabaseService.swift, ImageUploadService.swift, FeedViewModel.swift]
+
+### Fixed
+- [FIX] **Fixed ambiguous use of 'toolbar(content:)' in ExploreView**:
+  - Resolved compiler errors related to ambiguous toolbar method overloads
+  - Updated toolbar implementation to use consistent syntax without explicitly naming parameters
+  - Fixed both meet detail sheet toolbar and reply view toolbar implementations
+  - Ensured proper functionality is maintained across all toolbar usages
+  - Updated code to follow SwiftUI best practices for toolbar implementation
+  - [REF:ExploreView.swift]
+
+- [UI] **Standardized Create Meet button across the app**:
+  - Made the Create Meet plus button consistent between HomeView and ExploreView
+  - Standardized button size to 56x56 pixels for better touch targets
+  - Aligned button positioning in both views to reduce UI jarring when switching tabs
+  - Updated shadow and styling to match the app's design language
+  - Improved visual consistency for better user experience
+  - [REF:HomeView.swift, ExploreView.swift]
+
+- [FIX] **Fixed inconsistent meet detail sheet display in ExploreView**:
+  - Resolved issue where some meet cards would not properly show their detail sheets when tapped
+  - Improved state management for meet selection and sheet presentation
+  - Added consistent selection tracking with proper logging for debugging
+  - Implemented centralized meet selection function for all interaction points
+  - Ensured detail sheets display for all meet statuses and types
+  - Added proper state handling for map annotation and list view selections
+  - [REF:ExploreView.swift, MeetDetailView.swift]
+
+- [UI] **Enhanced map annotations in ExploreView with vehicle-specific icons**:
+  - Replaced generic waypoint markers with vehicle-specific icons (car, bike, mixed)
+  - Used meet.vehicleType property to determine which icon to display
+  - Increased marker size for better visibility and touch targets
+  - Added premium indicator for premium meets when selected
+  - Maintained consistent design language with the app's aesthetic
+  - Improved visual clarity of map markers for better user experience
+  - [REF:ExploreView.swift, MapAnnotationView]
+
+- [UI] **Redesigned waypoint detail sheet for improved UX and theming**:
+  - Completely overhauled the WaypointDetailSheet with modern design conforming to the app's theme
+  - Replaced basic form layout with visually appealing cards and structured information
+  - Added waypoint type icon with color-coordinated visual elements
+  - Improved readability of coordinate information with monospaced fonts
+  - Added convenient copy-to-clipboard functionality for coordinates
+  - Implemented "Open in Maps" feature for external navigation
+  - Enhanced typography and spacing for better content hierarchy
+  - Applied consistent theming with the app's design system
+  - [REF:RouteMapView.swift, WaypointDetailSheet]
+
 ## [Unreleased] - 2024-07-16
 
 ### Fixed
@@ -123,3 +320,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [OPTIMIZATION] Enhanced CompletedMeetsScrollModifier with bitmap rendering and unique ID
 - [FIX] Used high-priority gestures to improve scroll handling in nested scroll views
 - [OPTIMIZATION] Removed unnecessary UI elements and complexity from MeetCard component 
+
+## [Unreleased] - 2025-03-19
+
+### Fixed
+- [FIX] **Fixed compilation errors in StoryCreationView.swift**:
+  - Added required AVCaptureFileOutputRecordingDelegate conformance to CameraViewModel
+  - Fixed actor isolation issues in handleToolTap by adding @MainActor annotation
+  - Fixed improper use of Edge.Set.all by replacing edgesIgnoringSafeArea with ignoresSafeArea()
+  - Removed private modifier from CameraPhotoCaptureDelegate class
+  - Fixed bracket structure and hierarchy in nested view components
+  - Ensured thread-safe modification of view model properties
+  - Properly scoped functions and declarations at file level
+  - [REF:StoryCreationView.swift]
+
+## [Unreleased] - 2025-03-18
+
+### Fixed
+- [FIX] **Fixed additional compilation errors in StoryCreationView.swift**:
+  - Removed unreachable catch block at line 321 with proper error handling
+  - Fixed "catch block is unreachable because no errors are thrown in do block" warning
+  - Removed extraneous closing brace at the end of the file (line 1784)
+  - Fixed compiler error "Extraneous '}' at top level"
+  - Improved code quality with better error handling patterns
+  - [REF:StoryCreationView.swift]
+
+- [FIX] **Fixed media retention issues in StoryCreationView**:
+  - Resolved "Media not available" error when using story editor
+  - Implemented enhanced media caching system with dedicated cache directory
+  - Added strong reference management to prevent memory deallocation
+  - Created duplicate media safeguards with local reference tracking
+  - Added automatic media recovery system for lost references
+  - Improved error handling with user-friendly messages
+  - Enhanced logging for better debugging of media issues
+  - [REF:StoryCreationView.swift, StoryCreationViewModel.swift]
+
+## Unreleased
+
+### Added
+- [FEATURE] 2025-03-28: Added new CameraComponents.swift with improved camera implementation
+  - Created UIViewRepresentable CameraView for reliable camera preview
+  - Added CameraPreviewWithOverlay component with enhanced UI controls
+  - Implemented LoadingSpinner component for visual feedback
+  - Added PhotoCaptureProcessor for reliable photo capture handling
+  - [REF:V2/Views/Feed/CameraComponents.swift]
+
+### Changed
+- [REFACTOR] 2025-03-28: Enhanced CameraViewModel with improved lifecycle management
+  - Added progress tracking for camera setup with cameraSetupProgress state
+  - Implemented retry mechanism for camera initialization failures
+  - Added proper cleanup of resources during deinitialization
+  - Enhanced error handling and recovery for camera session interruptions
+  - [REF:V2/Views/Feed/StoryCreationView.swift]
+
+### Fixed
+- [FIX] 2025-03-29: Resolved compilation errors with camera components
+  - Fixed redeclaration issues between CameraComponents.swift and StoryCreationView.swift
+  - Updated component names to ImprovedCameraView and ImprovedCameraPreviewWithOverlay
+  - Fixed iOS 18 deprecation warnings for AVCaptureSession notification names
+  - Resolved Objective-C exposure issues with notification observer methods
+  - Addressed access control issues with CameraViewModel properties
+  - [REF:V2/Views/Feed/CameraComponents.swift, V2/Views/Feed/StoryCreationView.swift]
+
+- [FIX] 2025-03-28: Resolved camera grey screen issue in StoryCreationView
+  - Fixed camera initialization with proper loading indicators
+  - Enhanced error handling for AVCaptureSession startup with retry mechanism
+  - Implemented robust camera session lifecycle management
+  - Added app state monitoring for proper background/foreground handling
+  - Improved user feedback for camera access permissions and setup errors
+  - [REF:V2/Views/Feed/StoryCreationView.swift, V2/Views/Feed/CameraComponents.swift]
+
+// ... existing code ... 

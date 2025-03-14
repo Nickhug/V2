@@ -101,9 +101,9 @@ enum Theme {
             case .car:
                 return "car.fill"
             case .bike:
-                return "bicycle"
+                return "motorcycle"
             case .mixed:
-                return "car.and.bicycle"
+                return "car.2"
             }
         }
     }

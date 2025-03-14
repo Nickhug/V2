@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sequential-thinking": {
+      "command": "node",
+      "args": [
+        "/Users/nick/Desktop/V2/V2/sequential-thinking-mcp/dist/index.js"
+      ]
+    }
+  }
+} 

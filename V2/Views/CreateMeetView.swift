@@ -354,7 +354,7 @@ struct LocationPicker: View {
     @Binding var selectedLocation: CLLocationCoordinate2D?
     @Binding var address: String
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var locationManager = LocationManager()
+    @StateObject private var locationManager: LocationManager = LocationManager()
     @State private var searchText = ""
     @State private var searchResults: [MKMapItem] = []
     @State private var region = MKCoordinateRegion(

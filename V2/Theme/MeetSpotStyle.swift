@@ -82,7 +82,7 @@ struct MeetSpotColors {
     static let purple900 = Color(hex: "#4A1D96" as String)
     
     static let primaryGradient = LinearGradient(
-        colors: [Color.white, Color.white],
+        colors: [Color.black.opacity(0.8), Color.black.opacity(0.9)],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -130,13 +130,13 @@ struct MeetSpotType {
     static func bodyText(_ text: String) -> some View {
         Text(text)
             .font(body)
-            .foregroundColor(MeetSpotColors.purple200.opacity(0.8))
+            .foregroundColor(.white.opacity(0.8))
     }
     
     static func caption(_ text: String) -> some View {
         Text(text)
             .font(caption)
-            .foregroundColor(MeetSpotColors.purple200.opacity(0.7))
+            .foregroundColor(.white.opacity(0.7))
     }
 }
 
@@ -201,11 +201,11 @@ struct MeetSpotUI {
                 .foregroundColor(.black)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color.white.opacity(0.8))
+                .background(Color.white)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.black.opacity(0.7), lineWidth: 1)
+                        .stroke(Color.black, lineWidth: 1)
                 )
         }
     }

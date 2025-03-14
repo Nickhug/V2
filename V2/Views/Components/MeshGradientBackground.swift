@@ -14,22 +14,22 @@ public struct MeshGradientBackground: View {
     @State private var lastColorShiftTime: Date = Date()
     @State private var colorIndexMap: [Int] = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     
-    // Color palette - blue tones from https://coolors.co/palette/03045e-023e8a-0077b6-0096c7-00b4d8-48cae4-90e0ef-ade8f4-caf0f8
+    // Color palette - from https://coolors.co/palette/383838-353535-323232-2c2c2c-272727-252525-232323-1f1f1f-121212
     private let colors: [Color] = [
-        Color(red: 0.012, green: 0.016, blue: 0.369),  // Dark navy - 03045E
-        Color(red: 0.008, green: 0.243, blue: 0.541),  // Navy blue - 023E8A
-        Color(red: 0.000, green: 0.467, blue: 0.714),  // Strong blue - 0077B6
-        Color(red: 0.000, green: 0.588, blue: 0.780),  // Bright blue - 0096C7
-        Color(red: 0.000, green: 0.706, blue: 0.847),  // Cyan blue - 00B4D8
-        Color(red: 0.282, green: 0.792, blue: 0.894),  // Light cyan - 48CAE4
-        Color(red: 0.565, green: 0.878, blue: 0.937),  // Pale cyan - 90E0EF
-        Color(red: 0.678, green: 0.910, blue: 0.957),  // Very pale cyan - ADE8F4
-        Color(red: 0.792, green: 0.941, blue: 0.973),  // Almost white cyan - CAF0F8
+        Color(red: 0.220, green: 0.220, blue: 0.220),  // Dark gray - #383838
+        Color(red: 0.208, green: 0.208, blue: 0.208),  // Dark gray - #353535
+        Color(red: 0.196, green: 0.196, blue: 0.196),  // Dark gray - #323232
+        Color(red: 0.173, green: 0.173, blue: 0.173),  // Dark gray - #2C2C2C
+        Color(red: 0.153, green: 0.153, blue: 0.153),  // Very dark gray - #272727
+        Color(red: 0.145, green: 0.145, blue: 0.145),  // Very dark gray - #252525
+        Color(red: 0.137, green: 0.137, blue: 0.137),  // Very dark gray - #232323
+        Color(red: 0.122, green: 0.122, blue: 0.122),  // Very dark gray - #1F1F1F
+        Color(red: 0.071, green: 0.071, blue: 0.071),  // Nearly black - #121212
         
         // Derived accent colors
-        Color(red: 0.008, green: 0.243, blue: 0.541, opacity: 0.7),  // Navy blue with opacity - 023E8A
-        Color(red: 0.012, green: 0.016, blue: 0.369, opacity: 0.8),  // Dark navy with opacity - 03045E
-        Color(red: 0.565, green: 0.878, blue: 0.937, opacity: 0.9)   // Pale cyan with opacity - 90E0EF
+        Color(red: 0.196, green: 0.196, blue: 0.196, opacity: 0.7),  // Dark gray with opacity - #323232
+        Color(red: 0.137, green: 0.137, blue: 0.137, opacity: 0.8),  // Very dark gray with opacity - #232323
+        Color(red: 0.153, green: 0.153, blue: 0.153, opacity: 0.5)   // Very dark gray with opacity - #272727
     ]
     
     // Environment awareness for app state
@@ -53,7 +53,7 @@ public struct MeshGradientBackground: View {
                 height: 3,
                 points: points,
                 colors: currentColors,
-                background: Color(red: 0.000, green: 0.467, blue: 0.714), // Strong blue background - 0077B6
+                background: Color(red: 0.122, green: 0.122, blue: 0.122), // Very dark gray - #1F1F1F
                 smoothsColors: true
             )
             .blur(radius: 6)
@@ -184,11 +184,11 @@ public struct MeshGradientBackground: View {
     
     /// Get base colors arrangement based on the colorIndexMap
     private func getBaseColors() -> [Color] {
-        // Strategic arrangement with darker blues at edges and lighter blues in center
+        // Strategic arrangement with monochromatic dark grays for a sleek, premium aesthetic
         let baseColors: [Color] = [
-            colors[0],  colors[4], colors[0],  // Top row - dark navy at corners, cyan blue in middle
-            colors[1],  colors[6], colors[1],  // Middle row - navy blue at sides, pale cyan in center
-            colors[0],  colors[4], colors[0]   // Bottom row - dark navy at corners, cyan blue in middle
+            colors[0],  colors[2], colors[0],  // Top row - dark gray at corners, slightly darker in middle
+            colors[3],  colors[6], colors[3],  // Middle row - medium dark gray at sides, very dark gray in center
+            colors[1],  colors[4], colors[1]   // Bottom row - dark gray at corners, medium dark gray in middle
         ]
         
         var arrangedColors: [Color] = Array(repeating: .clear, count: 9)
@@ -212,16 +212,17 @@ public struct FallbackGradientBackground: View {
     @State private var colorPhase: Double = 0
     @State private var lastColorShiftTime: Date = Date()
     
-    // Base colors for animation - using the new blue palette
+    // Color palette from the same coolors palette - https://coolors.co/palette/383838-353535-323232-2c2c2c-272727-252525-232323-1f1f1f-121212
     private let baseColors: [Color] = [
-        Color(red: 0.012, green: 0.016, blue: 0.369),  // Dark navy - 03045E
-        Color(red: 0.008, green: 0.243, blue: 0.541),  // Navy blue - 023E8A
-        Color(red: 0.000, green: 0.467, blue: 0.714),  // Strong blue - 0077B6
-        Color(red: 0.000, green: 0.588, blue: 0.780),  // Bright blue - 0096C7
-        Color(red: 0.000, green: 0.706, blue: 0.847),  // Cyan blue - 00B4D8
-        Color(red: 0.282, green: 0.792, blue: 0.894),  // Light cyan - 48CAE4
-        Color(red: 0.565, green: 0.878, blue: 0.937),  // Pale cyan - 90E0EF
-        Color(red: 0.792, green: 0.941, blue: 0.973)   // Almost white cyan - CAF0F8
+        Color(red: 0.220, green: 0.220, blue: 0.220),  // Dark gray - #383838
+        Color(red: 0.208, green: 0.208, blue: 0.208),  // Dark gray - #353535
+        Color(red: 0.196, green: 0.196, blue: 0.196),  // Dark gray - #323232
+        Color(red: 0.173, green: 0.173, blue: 0.173),  // Dark gray - #2C2C2C
+        Color(red: 0.153, green: 0.153, blue: 0.153),  // Very dark gray - #272727
+        Color(red: 0.145, green: 0.145, blue: 0.145),  // Very dark gray - #252525
+        Color(red: 0.137, green: 0.137, blue: 0.137),  // Very dark gray - #232323
+        Color(red: 0.122, green: 0.122, blue: 0.122),  // Very dark gray - #1F1F1F
+        Color(red: 0.071, green: 0.071, blue: 0.071),  // Nearly black - #121212
     ]
     
     // Environment awareness
@@ -233,25 +234,25 @@ public struct FallbackGradientBackground: View {
             let animatedColors = getAnimatedColors(for: timeline.date)
             
             ZStack {
-                // Base gradient with slow movement - soft pastels
+                // Base gradient with slow movement
                 LinearGradient(
                     gradient: Gradient(colors: [
-                        animatedColors[0],
-                        animatedColors[1],
-                        animatedColors[2],
-                        animatedColors[3]
+                        animatedColors[0], // Dark gray - #383838
+                        animatedColors[2], // Dark gray - #323232
+                        animatedColors[4], // Very dark gray - #272727
+                        animatedColors[7]  // Very dark gray - #1F1F1F
                     ]),
                     startPoint: UnitPoint(x: 0, y: 0 + animationOffset),
                     endPoint: UnitPoint(x: 1, y: 1 + animationOffset)
                 )
                 
-                // Second gradient with counter movement - deeper pastel accents
+                // Second gradient with counter movement
                 LinearGradient(
                     gradient: Gradient(colors: [
-                        animatedColors[4].opacity(0.15),
-                        animatedColors[5].opacity(0.15),
-                        animatedColors[6].opacity(0.12),
-                        animatedColors[7].opacity(0.15)
+                        animatedColors[8].opacity(0.15), // Nearly black with opacity - #121212
+                        animatedColors[5].opacity(0.15), // Very dark gray with opacity - #252525
+                        animatedColors[3].opacity(0.12), // Dark gray with opacity - #2C2C2C
+                        animatedColors[1].opacity(0.15)  // Dark gray with opacity - #353535
                     ]),
                     startPoint: UnitPoint(x: 1, y: 0 - animationOffset),
                     endPoint: UnitPoint(x: 0, y: 1 - animationOffset)
@@ -272,14 +273,14 @@ public struct FallbackGradientBackground: View {
                 // Additional moving color accents
                 ZStack {
                     Circle()
-                        .fill(animatedColors[4].opacity(0.18))
+                        .fill(animatedColors[0].opacity(0.18)) // Dark gray with opacity - #383838
                         .frame(width: 120 + (sin(animationPhase) * 30), height: 120 + (sin(animationPhase) * 30))
                         .position(x: UIScreen.main.bounds.width * (0.2 + sin(animationPhase * 0.3) * 0.05), 
                                 y: UIScreen.main.bounds.height * (0.3 + cos(animationPhase * 0.4) * 0.05))
                         .blur(radius: 20)
                     
                     Circle()
-                        .fill(animatedColors[6].opacity(0.20))
+                        .fill(animatedColors[4].opacity(0.20)) // Very dark gray with opacity - #272727
                         .frame(width: 150 + (cos(animationPhase) * 40), height: 150 + (cos(animationPhase) * 40))
                         .position(x: UIScreen.main.bounds.width * (0.7 + cos(animationPhase * 0.5) * 0.05), 
                                 y: UIScreen.main.bounds.height * (0.7 + sin(animationPhase * 0.6) * 0.05))
@@ -287,7 +288,7 @@ public struct FallbackGradientBackground: View {
                     
                     // Add a third moving element
                     Circle()
-                        .fill(animatedColors[7].opacity(0.15))
+                        .fill(animatedColors[7].opacity(0.15)) // Very dark gray with opacity - #1F1F1F
                         .frame(width: 180 + (sin(animationPhase * 0.7) * 35), 
                             height: 180 + (sin(animationPhase * 0.7) * 35))
                         .position(x: UIScreen.main.bounds.width * (0.4 + sin(animationPhase * 0.4) * 0.08), 
@@ -346,16 +347,16 @@ public struct FallbackGradientBackground: View {
     
     // Get random gradient colors for radial gradients
     private func getRandomGradientColors(index: Int, colors: [Color], time: TimeInterval) -> [Color] {
-        let pastelColors = [
-            colors[5].opacity(0.10 + (sin(animationPhase + Double(index)) * 0.05)),
-            colors[7].opacity(0.10 + (cos(animationPhase * 0.7 + Double(index)) * 0.05)),
-            colors[3].opacity(0.10 + (sin(animationPhase * 1.2 + Double(index)) * 0.05)),
-            colors[0].opacity(0.0)
+        let monoColors = [
+            colors[0].opacity(0.10 + (sin(animationPhase + Double(index)) * 0.05)),  // Dark gray with opacity - #383838
+            colors[4].opacity(0.10 + (cos(animationPhase * 0.7 + Double(index)) * 0.05)),  // Very dark gray with opacity - #272727
+            colors[7].opacity(0.10 + (sin(animationPhase * 1.2 + Double(index)) * 0.05)),  // Very dark gray with opacity - #1F1F1F
+            colors[8].opacity(0.0)  // Transparent nearly black
         ]
         
         // Use a different starting color based on the index and current phase
         let startIndex = (index + Int(animationPhase * 0.5)) % 3
-        return [pastelColors[startIndex], pastelColors[3]]
+        return [monoColors[startIndex], monoColors[3]]
     }
     
     // Get random center point that changes over time
@@ -436,9 +437,23 @@ public struct GlassMeshGradientBackground<Content: View>: View {
     }
 }
 
-// A customizable version with color parameters (iOS 18+)
+// MARK: - Custom Mesh Gradient Background (iOS 18+)
+/// A customizable mesh gradient background with support for custom color palette
 @available(iOS 18.0, *)
 public struct CustomMeshGradientBackground: View {
+    // Default colors from the coolors palette - https://coolors.co/palette/383838-353535-323232-2c2c2c-272727-252525-232323-1f1f1f-121212
+    public static let defaultColors: [Color] = [
+        Color(red: 0.220, green: 0.220, blue: 0.220),  // Dark gray - #383838
+        Color(red: 0.208, green: 0.208, blue: 0.208),  // Dark gray - #353535
+        Color(red: 0.196, green: 0.196, blue: 0.196),  // Dark gray - #323232
+        Color(red: 0.173, green: 0.173, blue: 0.173),  // Dark gray - #2C2C2C
+        Color(red: 0.153, green: 0.153, blue: 0.153),  // Very dark gray - #272727
+        Color(red: 0.145, green: 0.145, blue: 0.145),  // Very dark gray - #252525
+        Color(red: 0.137, green: 0.137, blue: 0.137),  // Very dark gray - #232323
+        Color(red: 0.122, green: 0.122, blue: 0.122),  // Very dark gray - #1F1F1F
+        Color(red: 0.071, green: 0.071, blue: 0.071)   // Nearly black - #121212
+    ]
+    
     private let colors: [Color]
     private let speed: Double
     private let isPaused: Bool
@@ -467,7 +482,7 @@ public struct CustomMeshGradientBackground: View {
                 height: 3,
                 points: points,
                 colors: currentColors,
-                background: Color(red: 0.000, green: 0.467, blue: 0.714), // Strong blue background - 0077B6
+                background: Color(red: 0.122, green: 0.122, blue: 0.122), // Very dark gray - #1F1F1F
                 smoothsColors: true
             )
             .blur(radius: 6)
@@ -590,13 +605,13 @@ public struct CustomMeshGradientBackground: View {
         colorIndexMap = newMapping
     }
     
-    // Strategic color placement for visual interest
+    // Strategic color placement for visual impact
     private func createBaseColorMatrix(_ colors: [Color]) -> [Color] {
-        // Strategic arrangement with darker blues at edges and lighter blues in center
+        // Strategic arrangement with monochromatic dark grays for a sleek, premium aesthetic
         let baseColors: [Color] = [
-            colors[0],  colors[4], colors[0],  // Top row - dark navy at corners, cyan blue in middle
-            colors[1],  colors[6], colors[1],  // Middle row - navy blue at sides, pale cyan in center
-            colors[0],  colors[4], colors[0]   // Bottom row - dark navy at corners, cyan blue in middle
+            colors[0],  colors[2], colors[0],  // Top row - dark gray at corners, slightly darker in middle
+            colors[3],  colors[6], colors[3],  // Middle row - medium dark gray at sides, very dark gray in center
+            colors[1],  colors[4], colors[1]   // Bottom row - dark gray at corners, medium dark gray in middle
         ]
         
         // Apply the current color mapping
@@ -608,23 +623,7 @@ public struct CustomMeshGradientBackground: View {
         return arrangedColors
     }
     
-    public init(colors: [Color] = [
-        // Blue color palette from https://coolors.co/palette/03045e-023e8a-0077b6-0096c7-00b4d8-48cae4-90e0ef-ade8f4-caf0f8
-        Color(red: 0.012, green: 0.016, blue: 0.369),  // Dark navy - 03045E
-        Color(red: 0.008, green: 0.243, blue: 0.541),  // Navy blue - 023E8A
-        Color(red: 0.000, green: 0.467, blue: 0.714),  // Strong blue - 0077B6
-        Color(red: 0.000, green: 0.588, blue: 0.780),  // Bright blue - 0096C7
-        Color(red: 0.000, green: 0.706, blue: 0.847),  // Cyan blue - 00B4D8
-        Color(red: 0.282, green: 0.792, blue: 0.894),  // Light cyan - 48CAE4
-        Color(red: 0.565, green: 0.878, blue: 0.937),  // Pale cyan - 90E0EF
-        Color(red: 0.678, green: 0.910, blue: 0.957),  // Very pale cyan - ADE8F4
-        Color(red: 0.792, green: 0.941, blue: 0.973),  // Almost white cyan - CAF0F8
-        
-        // Derived accent colors
-        Color(red: 0.008, green: 0.243, blue: 0.541, opacity: 0.7),  // Navy blue with opacity - 023E8A
-        Color(red: 0.012, green: 0.016, blue: 0.369, opacity: 0.8),  // Dark navy with opacity - 03045E
-        Color(red: 0.565, green: 0.878, blue: 0.937, opacity: 0.9)   // Pale cyan with opacity - 90E0EF
-    ], speed: Double = 0.5, isPaused: Bool = false) {
+    public init(colors: [Color] = defaultColors, speed: Double = 0.5, isPaused: Bool = false) {
         self.colors = colors
         self.speed = speed
         self.isPaused = isPaused

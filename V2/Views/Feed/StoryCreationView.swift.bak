@@ -1,0 +1,1929 @@
+import SwiftUI
+import PhotosUI
+import AVKit
+import CoreLocation
+
+struct StoryCreationView: View {
+    @ObservedObject var viewModel: StoryCreationViewModel
+    @Environment(\.presentationMode) var presentationMode
+    @State private var showPhotosPicker = false
+    @State private var photoSelection: PhotosPickerItem? = nil
+    @State private var showCaptionSheet = false
+    @State private var processingMedia = false
+    
+    @StateObject private var locationManager: LocationManager = LocationManager()
+    
+    var body: some View {
+        // Launch camera directly in full screen
+        ZStack {
+            CameraView(captureMode: viewModel.captureMode) { result in
+                print("CameraView returned result")
+                switch result {
+                case .photo(let image):
+                    processingMedia = true
+                    print("Photo captured: \(image.size)")
+                    
+                    // Make a copy of the image to ensure it persists
+                    if let cgImage = image.cgImage {
+                        let imageCopy = UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
+                        viewModel.setSelectedImage(imageCopy)
+                    } else {
+                        viewModel.setSelectedImage(image)
+                    }
+                    
+                    viewModel.mediaType = .image
+                    viewModel.showCaptionField = true
+                    viewModel.showCamera = false
+                    
+                    // Ensure we're on the main thread 
+                    DispatchQueue.main.async {
+                        print("Setting up story editor for photo")
+                        showCaptionSheet = true
+                        processingMedia = false
+                    }
+                    
+                case .video(let url):
+                    processingMedia = true
+                    print("Video captured: \(url.absoluteString)")
+                    viewModel.setSelectedVideo(url)
+                    viewModel.mediaType = .video
+                    viewModel.showCaptionField = true
+                    viewModel.showCamera = false
+                    
+                    // Ensure we're on the main thread 
+                    DispatchQueue.main.async {
+                        print("Setting up story editor for video")
+                        showCaptionSheet = true
+                        processingMedia = false
+                    }
+                    
+                case .cancel:
+                    viewModel.cancelStoryCreation()
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            
+            // UI Overlays - moved outside of the CameraView
+            VStack {
+                HStack {
+                    // Close button
+                    Button(action: {
+                        viewModel.cancelStoryCreation()
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                            .padding()
+                    }
+                    
+                    Spacer()
+                }
+                
+                Spacer()
+                
+                HStack {
+                    // Gallery picker button (Instagram-style)
+                    Button(action: {
+                        print("Gallery button pressed")
+                        showPhotosPicker = true
+                    }) {
+                        Image(systemName: "photo.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                            .padding()
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    Spacer()
+                }
+            }
+            
+            // Loading overlay
+            if processingMedia {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+                    .frame(width: 100, height: 100)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(16)
+            }
+        }
+        .ignoresSafeArea()
+        .navigationBarHidden(true)
+        .fullScreenCover(isPresented: $showCaptionSheet, onDismiss: {
+            print("FullScreenCover was dismissed")
+            // Make sure we clean up state if needed
+            if !viewModel.showCaptionField && viewModel.selectedImage == nil && viewModel.selectedVideo == nil {
+                print("Resetting view state after dismissal")
+                viewModel.showCamera = true
+            }
+        }) {
+            StoryEditorView(viewModel: viewModel, isPresented: $showCaptionSheet, onShare: {
+                Task {
+                    let success = await viewModel.uploadStory()
+                    if success {
+                        showCaptionSheet = false
+                        viewModel.showCaptionField = false
+                        viewModel.selectedImage = nil
+                        viewModel.selectedVideo = nil
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }, onCancel: {
+                showCaptionSheet = false
+                viewModel.showCaptionField = false
+                viewModel.selectedImage = nil
+                viewModel.selectedVideo = nil
+                
+                // If we're canceling, we want to go back to the camera view
+                viewModel.showCamera = true
+                print("Cancelled editing, should return to camera")
+            })
+            .edgesIgnoringSafeArea(.all)
+        }
+        .photosPicker(
+            isPresented: $showPhotosPicker,
+            selection: $photoSelection,
+            matching: .any(of: [.images, .videos])
+        )
+        .onChange(of: photoSelection) { _, newItem in
+            print("Photo selection changed: \(newItem != nil ? "has item" : "nil")")
+            if let newItem = newItem {
+                handleSelectedMedia(newItem)
+                // Important: Reset the selection state after processing
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    photoSelection = nil
+                }
+            }
+        }
+        .alert(isPresented: $viewModel.showErrorMessage) {
+            Alert(
+                title: Text("Error"),
+                message: Text(viewModel.errorMessage),
+                dismissButton: .default(Text("OK"))
+            )
+        }
+        .fullScreenCover(isPresented: $viewModel.showLocationPicker) {
+            LocationPickerView { coordinate, name in
+                viewModel.updateLocation(coordinate: coordinate, name: name)
+            }
+        }
+        .onDisappear {
+            if !viewModel.isLoading {
+                // Only reset state if we're not currently uploading
+                print("Story creation view disappeared")
+                
+                // If showCaptionField is still true but the sheet is disappearing,
+                // we need to reset the appropriate state, but only if we're not showing the caption sheet
+                if viewModel.showCaptionField && !showCaptionSheet && !viewModel.isLoading {
+                    print("Resetting caption field state")
+                    viewModel.showCaptionField = false
+                    viewModel.selectedImage = nil
+                    viewModel.selectedVideo = nil
+                } else if showCaptionSheet {
+                    print("Caption sheet is active, maintaining media references")
+                }
+            } else {
+                print("Story editor disappeared during loading - maintaining state")
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func handleSelectedMedia(_ item: PhotosPickerItem) {
+        print("Processing selected media from photos picker")
+        processingMedia = true
+        
+        Task {
+            // Try to load as image first
+            if let data = try? await item.loadTransferable(type: Data.self) {
+                if let uiImage = UIImage(data: data) {
+                    print("Selected media is an image, size: \(uiImage.size)")
+                    // It's an image - create a copy to ensure it stays in memory
+                    let imageCopy: UIImage
+                    if let cgImage = uiImage.cgImage {
+                        imageCopy = UIImage(cgImage: cgImage, scale: uiImage.scale, orientation: uiImage.imageOrientation)
+                    } else {
+                        imageCopy = uiImage
+                    }
+                    
+                    // Save the image to disk to ensure it stays in memory
+                    let fileManager = FileManager.default
+                    let cachesDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+                    let mediaDirectory = cachesDirectory.appendingPathComponent("StoryMedia", isDirectory: true)
+                    
+                    // Create media directory if it doesn't exist
+                    if !fileManager.fileExists(atPath: mediaDirectory.path) {
+                        try? fileManager.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
+                    }
+                    
+                    // Generate a unique filename
+                    let tempURL = mediaDirectory.appendingPathComponent("\(UUID().uuidString).jpg")
+                    
+                    if let imageData = imageCopy.jpegData(compressionQuality: 0.95) {
+                        do {
+                            try imageData.write(to: tempURL)
+                            print("📥 Saved image to persistent cache: \(tempURL.path)")
+                            
+                            // Load it back to ensure it's properly retained
+                            if let savedData = try? Data(contentsOf: tempURL),
+                               let savedImage = UIImage(data: savedData) {
+                                await MainActor.run {
+                                    viewModel.setSelectedImage(savedImage)
+                                    viewModel.mediaType = .image
+                                    viewModel.showCaptionField = true
+                                    processingMedia = false
+                                    print("✅ Successfully loaded image from cache, showing story editor")
+                                    showCaptionSheet = true
+                                }
+                            } else {
+                                await MainActor.run {
+                                    viewModel.setSelectedImage(imageCopy)
+                                    viewModel.mediaType = .image
+                                    viewModel.showCaptionField = true
+                                    processingMedia = false
+                                    print("⚠️ Couldn't load from cache, using original copy")
+                                    showCaptionSheet = true
+                                }
+                            }
+                        } catch {
+                            print("❌ Error saving image to cache: \(error.localizedDescription)")
+                            await MainActor.run {
+                                viewModel.setSelectedImage(imageCopy)
+                                viewModel.mediaType = .image
+                                viewModel.showCaptionField = true
+                                processingMedia = false
+                                print("⚠️ Cache write failed, using original copy")
+                                showCaptionSheet = true
+                            }
+                        }
+                    } else {
+                        await MainActor.run {
+                            viewModel.setSelectedImage(imageCopy)
+                            viewModel.mediaType = .image
+                            viewModel.showCaptionField = true
+                            processingMedia = false
+                            print("⚠️ Failed to create JPEG data, using original copy")
+                            showCaptionSheet = true
+                        }
+                    }
+                } else {
+                    print("Selected media is a video")
+                    // It's a video
+                    // Use a persistent cache location
+                    let fileManager = FileManager.default
+                    let cachesDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+                    let mediaDirectory = cachesDirectory.appendingPathComponent("StoryMedia", isDirectory: true)
+                    
+                    // Create media directory if it doesn't exist
+                    if !fileManager.fileExists(atPath: mediaDirectory.path) {
+                        try? fileManager.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
+                    }
+                    
+                    let tempURL = mediaDirectory.appendingPathComponent("\(UUID().uuidString).mov")
+                    
+                    do {
+                        try data.write(to: tempURL)
+                        print("📥 Saved video to persistent cache: \(tempURL.path)")
+                        
+                        await MainActor.run {
+                            viewModel.setSelectedVideo(tempURL)
+                            viewModel.mediaType = .video
+                            viewModel.showCaptionField = true
+                            processingMedia = false
+                            print("✅ Successfully saved video to cache, showing story editor")
+                            showCaptionSheet = true
+                        }
+                    } catch {
+                        print("❌ Error saving video to cache: \(error.localizedDescription)")
+                        processingMedia = false
+                        viewModel.showErrorMessage = true
+                        viewModel.errorMessage = "Failed to process video: \(error.localizedDescription)"
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    processingMedia = false
+                    print("❌ Failed to load media data")
+                    viewModel.showErrorMessage = true
+                    viewModel.errorMessage = "Failed to load media. Please try a different file."
+                }
+            }
+            
+            // Handle any general errors that might occur during selection
+            // (but note that most errors are already handled above with specific error messages)
+        }
+    }
+    
+    // Handle tool tap with animation and specific logic
+    private func handleToolTap(mode: StoryCreationViewModel.EditingMode) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            viewModel.editingMode = mode
+            viewModel.shouldKeepEditing = true
+            
+            // Handle specific tool activation logic
+            if mode == .text {
+                DispatchQueue.main.async {
+                    if viewModel.textOverlays.isEmpty {
+                        viewModel.addTextOverlay()
+                    } else if viewModel.selectedTextOverlay == nil {
+                        viewModel.selectedTextOverlay = viewModel.textOverlays.first?.id
+                    }
+                    viewModel.maintainEditingMode()
+                }
+            } else if mode == .draw {
+                DispatchQueue.main.async {
+                    viewModel.maintainEditingMode()
+                }
+            }
+        }
+    }
+    
+    // Helper function to get font from name and size
+    private func getFont(name: String, size: CGFloat) -> Font {
+        switch name {
+        case "System Bold":
+            return .system(size: size, weight: .bold)
+        case "System Italic":
+            return .system(size: size, design: .serif).italic()
+        case "Helvetica":
+            return .custom("Helvetica", size: size)
+        case "Arial":
+            return .custom("Arial", size: size)
+        case "Georgia":
+            return .custom("Georgia", size: size)
+        default:
+            return .system(size: size)
+        }
+    }
+}
+
+// Camera view for taking photos or videos
+struct CameraView: View {
+    enum CaptureResult {
+        case photo(UIImage)
+        case video(URL)
+        case cancel
+    }
+    
+    var captureMode: StoryCreationViewModel.CaptureMode
+    var onCapture: (CaptureResult) -> Void
+    
+    @Environment(\.presentationMode) var presentationMode
+    @StateObject private var model = CameraViewModel()
+    @State private var selectedMode: StoryCreationViewModel.CaptureMode
+    @State private var isCapturing: Bool = false
+    
+    init(captureMode: StoryCreationViewModel.CaptureMode, onCapture: @escaping (CaptureResult) -> Void) {
+        self.captureMode = captureMode
+        self.onCapture = onCapture
+        _selectedMode = State(initialValue: captureMode)
+    }
+    
+    var body: some View {
+        ZStack {
+            // Camera preview
+            CameraPreviewView(session: model.session)
+                .edgesIgnoringSafeArea(.all)
+            
+            // Overlay controls
+            VStack {
+                // Top controls
+                HStack {
+                    Spacer()
+                    
+                    // Flash button
+                    Button(action: {
+                        model.toggleFlash()
+                    }) {
+                        Image(systemName: model.flashOn ? "bolt.fill" : "bolt.slash.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Toggle camera button
+                    Button(action: {
+                        model.switchCamera()
+                    }) {
+                        Image(systemName: "arrow.triangle.2.circlepath.camera")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .padding(.horizontal, 10)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                
+                Spacer()
+                
+                // Mode selector
+                HStack(spacing: 30) {
+                    Button(action: {
+                        selectedMode = .photo
+                    }) {
+                        Text("PHOTO")
+                            .font(.system(size: 13, weight: selectedMode == .photo ? .bold : .medium))
+                            .foregroundColor(selectedMode == .photo ? .white : .white.opacity(0.7))
+                            .padding(.bottom, 8)
+                            .overlay(
+                                Rectangle()
+                                    .frame(height: 2)
+                                    .foregroundColor(selectedMode == .photo ? .white : .clear),
+                                alignment: .bottom
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    Button(action: {
+                        selectedMode = .video
+                    }) {
+                        Text("VIDEO")
+                            .font(.system(size: 13, weight: selectedMode == .video ? .bold : .medium))
+                            .foregroundColor(selectedMode == .video ? .white : .white.opacity(0.7))
+                            .padding(.bottom, 8)
+                            .overlay(
+                                Rectangle()
+                                    .frame(height: 2)
+                                    .foregroundColor(selectedMode == .video ? .white : .clear),
+                                alignment: .bottom
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.bottom, 20)
+                
+                // Camera controls
+                HStack {
+                    Spacer()
+                    
+                    // Capture button
+                    Button(action: {
+                        print("Capture button tapped")
+                        guard !isCapturing else { 
+                            print("Already capturing, ignoring tap")
+                            return
+                        }
+                        isCapturing = true
+                        
+                        if selectedMode == .photo {
+                            print("Photo capture button pressed")
+                            model.capturePhoto { image in
+                                isCapturing = false
+                                if let image = image {
+                                    print("Photo captured and being passed to handler")
+                                    
+                                    // Make a copy of the image to ensure memory retention
+                                    let processedImage: UIImage
+                                    if let cgImage = image.cgImage {
+                                        processedImage = UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
+                                    } else {
+                                        processedImage = image
+                                    }
+                                    
+                                    // Save image to temp directory to ensure it doesn't get deallocated
+                                    if let imageData = processedImage.jpegData(compressionQuality: 0.9),
+                                       let tempURL = try? FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("\(UUID().uuidString).jpg") {
+                                        
+                                        do {
+                                            try imageData.write(to: tempURL)
+                                            print("Saved image to temp location: \(tempURL.path)")
+                                            
+                                            // Now load it back to ensure it's properly retained
+                                            if let savedImageData = try? Data(contentsOf: tempURL),
+                                               let savedImage = UIImage(data: savedImageData) {
+                                                print("Successfully loaded saved image from temp location")
+                                                // Use the saved image which now has a file backing it
+                                                onCapture(.photo(savedImage))
+                                            } else {
+                                                print("Failed to load saved image, using original copy")
+                                                onCapture(.photo(processedImage))
+                                            }
+                                        } catch {
+                                            print("Error saving image: \(error.localizedDescription)")
+                                            onCapture(.photo(processedImage))
+                                        }
+                                    } else {
+                                        print("Failed to create image data or temp URL")
+                                        onCapture(.photo(processedImage))
+                                    }
+                                } else {
+                                    print("Failed to capture photo")
+                                }
+                            }
+                        } else {
+                            if model.isRecording {
+                                print("Stopping video recording")
+                                model.stopRecording { url in
+                                    isCapturing = false
+                                    if let url = url {
+                                        print("Video recorded and being passed to handler")
+                                        onCapture(.video(url))
+                                    } else {
+                                        print("Failed to record video")
+                                    }
+                                }
+                            } else {
+                                print("Starting video recording")
+                                model.startRecording()
+                                isCapturing = false
+                            }
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.white, lineWidth: 3)
+                                .frame(width: 72, height: 72)
+                            
+                            if selectedMode == .video && model.isRecording {
+                                // Recording indicator
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.red)
+                                    .frame(width: 26, height: 26)
+                            } else {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 66, height: 66)
+                            }
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(isCapturing)
+                    
+                    Spacer()
+                }
+                .padding(.bottom, 30)
+            }
+        }
+        .onAppear {
+            print("Camera view appeared, setting up camera")
+            model.setupCamera()
+        }
+        .onDisappear {
+            print("Camera view disappeared, stopping session")
+            model.stopSession()
+        }
+        .onChange(of: selectedMode) { oldValue, newValue in
+            // Update recording state if needed
+            if oldValue == .video && model.isRecording {
+                model.stopRecording { _ in }
+            }
+        }
+    }
+}
+
+// Camera preview view
+struct CameraPreviewView: UIViewRepresentable {
+    var session: AVCaptureSession
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: UIScreen.main.bounds)
+        
+        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.frame = view.frame
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+// Camera view model for handling camera functionality
+class CameraViewModel: NSObject, ObservableObject {
+    @Published var isRecording = false
+    @Published var flashOn = false
+    @Published var isSessionRunning = false
+    
+    let session = AVCaptureSession()
+    private var photoOutput = AVCapturePhotoOutput()
+    private var videoOutput = AVCaptureMovieFileOutput()
+    private var currentDevice: AVCaptureDevice?
+    private var currentPosition: AVCaptureDevice.Position = .back
+    private var sessionQueue = DispatchQueue(label: "camera.session.queue")
+    
+    func setupCamera() {
+        print("Setting up camera")
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.session.beginConfiguration()
+            
+            // Set up video input
+            guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                  let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice) else {
+                print("Failed to set up video device")
+                return
+            }
+            
+            self.currentDevice = videoDevice
+            
+            if self.session.canAddInput(videoDeviceInput) {
+                self.session.addInput(videoDeviceInput)
+            }
+            
+            // Set up audio input for video recording
+            guard let audioDevice = AVCaptureDevice.default(for: .audio),
+                  let audioDeviceInput = try? AVCaptureDeviceInput(device: audioDevice) else {
+                print("Failed to set up audio device")
+                return
+            }
+            
+            if self.session.canAddInput(audioDeviceInput) {
+                self.session.addInput(audioDeviceInput)
+            }
+            
+            // Set up photo output
+            if self.session.canAddOutput(self.photoOutput) {
+                self.session.addOutput(self.photoOutput)
+            }
+            
+            // Set up video output
+            if self.session.canAddOutput(self.videoOutput) {
+                self.session.addOutput(self.videoOutput)
+            }
+            
+            self.session.commitConfiguration()
+            
+            self.session.startRunning()
+            
+            DispatchQueue.main.async {
+                self.isSessionRunning = self.session.isRunning
+                print("Camera session is running: \(self.isSessionRunning)")
+            }
+        }
+    }
+    
+    func stopSession() {
+        print("Stopping camera session")
+        // Ensure we're not recording when stopping the session
+        if isRecording {
+            videoOutput.stopRecording()
+            DispatchQueue.main.async {
+                self.isRecording = false
+            }
+        }
+        
+        // Stop session on background thread to avoid UI freezes
+        sessionQueue.async { [weak self] in
+            self?.session.stopRunning()
+            
+            DispatchQueue.main.async {
+                self?.isSessionRunning = false
+                print("Camera session stopped")
+            }
+        }
+    }
+    
+    func switchCamera() {
+        session.beginConfiguration()
+        
+        // Remove existing input
+        for input in session.inputs {
+            session.removeInput(input)
+        }
+        
+        // Toggle camera position
+        currentPosition = currentPosition == .back ? .front : .back
+        
+        // Add new input
+        guard let videoDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentPosition),
+              let videoDeviceInput = try? AVCaptureDeviceInput(device: videoDevice) else {
+            return
+        }
+        
+        currentDevice = videoDevice
+        
+        if session.canAddInput(videoDeviceInput) {
+            session.addInput(videoDeviceInput)
+        }
+        
+        // Re-add audio input
+        guard let audioDevice = AVCaptureDevice.default(for: .audio),
+              let audioDeviceInput = try? AVCaptureDeviceInput(device: audioDevice) else {
+            return
+        }
+        
+        if session.canAddInput(audioDeviceInput) {
+            session.addInput(audioDeviceInput)
+        }
+        
+        session.commitConfiguration()
+    }
+    
+    func toggleFlash() {
+        guard let device = currentDevice, device.hasFlash else { return }
+        
+        do {
+            try device.lockForConfiguration()
+            
+            if device.hasTorch {
+                if flashOn {
+                    device.torchMode = .off
+                } else {
+                    try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+                }
+            }
+            
+            flashOn.toggle()
+            device.unlockForConfiguration()
+        } catch {
+            print("Error toggling flash: \(error.localizedDescription)")
+        }
+    }
+    
+    func capturePhoto(completion: @escaping (UIImage?) -> Void) {
+        print("capturePhoto called")
+        sessionQueue.async { [weak self] in
+            guard let self = self else { 
+                DispatchQueue.main.async {
+                    print("Self is nil, capturePhoto failed")
+                    completion(nil)
+                }
+                return
+            }
+            
+            guard self.session.isRunning else {
+                DispatchQueue.main.async {
+                    print("Camera session is not running")
+                    completion(nil)
+                }
+                return
+            }
+            
+            let settings = AVCapturePhotoSettings()
+            
+            // Apply flash settings if flash is on and available
+            if self.flashOn, 
+               let device = self.currentDevice, 
+               device.hasFlash,
+               self.photoOutput.supportedFlashModes.contains(.on) {
+                settings.flashMode = .on
+            }
+            
+            print("Capturing photo with settings: \(settings)")
+            
+            // Create delegate that will be retained until capture completes
+            let delegate = CameraPhotoCaptureDelegate { image in
+                DispatchQueue.main.async {
+                    print("Photo capture completed, image: \(image != nil ? "success" : "nil")")
+                    completion(image)
+                }
+            }
+            
+            // Store delegate to avoid deallocation before capture completes
+            self.currentPhotoCaptureDelegate = delegate
+            
+            self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+        }
+    }
+    
+    // Strong reference to current delegate to prevent premature deallocation
+    private var currentPhotoCaptureDelegate: AVCapturePhotoCaptureDelegate?
+    private var videoCompletionHandler: ((URL?) -> Void)?
+    
+    func startRecording() {
+        guard !isRecording else { return }
+        print("Starting video recording")
+        
+        guard let url = createTempURL() else { 
+            print("Failed to create temp URL for video recording")
+            return 
+        }
+        
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            print("Starting recording to: \(url.absoluteString)")
+            self.videoOutput.startRecording(to: url, recordingDelegate: self)
+            DispatchQueue.main.async {
+                self.isRecording = true
+            }
+        }
+    }
+    
+    func stopRecording(completion: @escaping (URL?) -> Void) {
+        guard isRecording else {
+            print("Not currently recording when stopRecording was called")
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+        
+        print("Stopping video recording")
+        videoCompletionHandler = { url in
+            if let url = url {
+                print("Video recording completed successfully: \(url.absoluteString)")
+            } else {
+                print("Video recording failed to produce a valid URL")
+            }
+            DispatchQueue.main.async {
+                completion(url)
+            }
+        }
+        
+        sessionQueue.async { [weak self] in
+            self?.videoOutput.stopRecording()
+            DispatchQueue.main.async {
+                self?.isRecording = false
+            }
+        }
+    }
+    
+    private func createTempURL() -> URL? {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = "\(UUID().uuidString).mov"
+        return tempDir.appendingPathComponent(fileName)
+    }
+}
+
+extension CameraViewModel: AVCaptureFileOutputRecordingDelegate {
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        print("Started recording video to: \(fileURL.absoluteString)")
+        // Recording started - already handled by isRecording property
+    }
+    
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        if let error = error {
+            print("Error recording video: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                self.videoCompletionHandler?(nil)
+                self.videoCompletionHandler = nil
+            }
+            return
+        }
+        
+        // Verify the video file exists and is valid
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: outputFileURL.path) else {
+            print("Video file doesn't exist at path: \(outputFileURL.path)")
+            DispatchQueue.main.async {
+                self.videoCompletionHandler?(nil)
+                self.videoCompletionHandler = nil
+            }
+            return
+        }
+        
+        print("Video recording completed successfully at: \(outputFileURL.absoluteString)")
+        DispatchQueue.main.async {
+            self.videoCompletionHandler?(outputFileURL)
+            self.videoCompletionHandler = nil
+        }
+    }
+}
+
+// Update the photo capture delegate
+private class CameraPhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    private let completion: (UIImage?) -> Void
+    
+    init(completion: @escaping (UIImage?) -> Void) {
+        self.completion = completion
+        super.init()
+    }
+    
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        print("Photo output delegate called")
+        
+        if let error = error {
+            print("Error capturing photo: \(error)")
+            completion(nil)
+            return
+        }
+        
+        guard let imageData = photo.fileDataRepresentation() else {
+            print("Failed to get image data representation")
+            completion(nil)
+            return
+        }
+        
+        guard let image = UIImage(data: imageData) else {
+            print("Failed to create UIImage from data")
+            completion(nil)
+            return
+        }
+        
+        print("Photo captured successfully: \(image.size)")
+        completion(image)
+    }
+}
+
+// Location picker view for adding location to stories
+struct LocationPickerView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @StateObject private var locationManager: LocationManager = LocationManager()
+    @State private var searchText = ""
+    @State private var locations: [LocationResult] = []
+    @State private var isSearching = false
+    var onSelectLocation: (CLLocationCoordinate2D, String) -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack {
+                // Custom navigation bar
+                HStack {
+                    Text("Add Location")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .foregroundColor(.white)
+                }
+                .padding()
+                .background(Color.black.opacity(0.8))
+                
+                // Search bar
+                TextField("Search location", text: $searchText)
+                    .padding()
+                    .background(Color.white.opacity(0.1))
+                    .cornerRadius(10)
+                    .foregroundColor(.white)
+                    .padding(.horizontal)
+                    .onSubmit {
+                        searchLocations()
+                    }
+                
+                if isSearching {
+                    ProgressView()
+                        .tint(.white)
+                        .padding()
+                } else if !locations.isEmpty {
+                    // Location results
+                    List {
+                        ForEach(locations) { location in
+                            Button(action: {
+                                onSelectLocation(location.coordinate, location.name)
+                                presentationMode.wrappedValue.dismiss()
+                            }) {
+                                HStack {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .foregroundColor(.blue)
+                                    
+                                    VStack(alignment: .leading) {
+                                        Text(location.name)
+                                            .foregroundColor(.white)
+                                        
+                                        if let subtitle = location.subtitle {
+                                            Text(subtitle)
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                } else {
+                    // Current location button
+                    Button(action: {
+                        if let location = locationManager.location {
+                            onSelectLocation(location.coordinate, "Current Location")
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "location.fill")
+                                .foregroundColor(.blue)
+                            
+                            Text("Use Current Location")
+                                .foregroundColor(.white)
+                        }
+                        .padding()
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(10)
+                    }
+                    .padding()
+                    .disabled(locationManager.location == nil)
+                    .opacity(locationManager.location == nil ? 0.5 : 1.0)
+                    
+                    Spacer()
+                }
+            }
+        }
+        .edgesIgnoringSafeArea(.all)
+        .statusBar(hidden: true)
+        .onAppear {
+            locationManager.requestLocation()
+        }
+    }
+    
+    private func searchLocations() {
+        guard !searchText.isEmpty else { return }
+        
+        isSearching = true
+        locations = []
+        
+        let geocoder = CLGeocoder()
+        geocoder.geocodeAddressString(searchText) { placemarks, error in
+            isSearching = false
+            
+            if let error = error {
+                print("Geocoding error: \(error)")
+                return
+            }
+            
+            guard let placemarks = placemarks else { return }
+            
+            locations = placemarks.compactMap { placemark in
+                guard let name = placemark.name,
+                      let location = placemark.location else {
+                    return nil
+                }
+                
+                var subtitle: String?
+                if let locality = placemark.locality, let country = placemark.country {
+                    subtitle = "\(locality), \(country)"
+                } else if let country = placemark.country {
+                    subtitle = country
+                }
+                
+                return LocationResult(
+                    id: UUID(),
+                    name: name,
+                    subtitle: subtitle,
+                    coordinate: location.coordinate
+                )
+            }
+        }
+    }
+}
+
+// Location result model for location picker
+struct LocationResult: Identifiable {
+    let id: UUID
+    let name: String
+    let subtitle: String?
+    let coordinate: CLLocationCoordinate2D
+}
+
+struct StoryCreationView_Previews: PreviewProvider {
+    static var previews: some View {
+        StoryCreationView(viewModel: StoryCreationViewModel(storiesViewModel: StoriesViewModel()))
+    }
+}
+
+// MARK: - StoryEditorView
+struct StoryEditorView: View {
+    @ObservedObject var viewModel: StoryCreationViewModel
+    @Binding var isPresented: Bool
+    var onShare: () -> Void
+    var onCancel: () -> Void
+    
+    @State private var scale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var lastScale: CGFloat = 1.0
+    @State private var activeTextEditId: UUID?
+    @State private var textInput: String = ""
+    @GestureState private var isDragging: Bool = false
+    @State private var currentLocation: CGPoint = .zero
+    @Environment(\.colorScheme) private var colorScheme
+    
+    // Add local strong references to media to prevent deallocation
+    @State private var localImageRef: UIImage?
+    @State private var localVideoRef: URL?
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Background layer
+                Color.black.edgesIgnoringSafeArea(.all)
+                
+                // Image or Video Layer directly in main ZStack with proper positioning
+                Group {
+                    if let image = viewModel.selectedImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .scaleEffect(viewModel.currentImageScale * scale)
+                            .offset(CGSize(
+                                width: viewModel.currentImageOffset.width + offset.width,
+                                height: viewModel.currentImageOffset.height + offset.height
+                            ))
+                            .gesture(
+                                viewModel.editingMode == .transform ?
+                                transformGesture(geometry: geometry) : nil
+                            )
+                            .overlay(drawingCanvasOverlay)
+                            .onAppear {
+                                // Create local strong reference
+                                localImageRef = image
+                                print("Created local reference to image with size: \(image.size)")
+                            }
+                    } else if let videoURL = viewModel.selectedVideo {
+                        VideoPlayer(player: AVPlayer(url: videoURL))
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .disabled(true) // Disable player controls
+                            .onAppear {
+                                // Create local strong reference
+                                localVideoRef = videoURL
+                                print("Created local reference to video")
+                            }
+                    } else {
+                        // Fallback for when no media is available
+                        VStack(spacing: 20) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.white)
+                            
+                            Text("Media not available")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            
+                            Text("Please try selecting again")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.8))
+                                .padding(.bottom, 20)
+                                
+                            Button("Cancel") {
+                                onCancel()
+                            }
+                            .padding(.horizontal, 30)
+                            .padding(.vertical, 10)
+                            .background(Color.gray.opacity(0.3))
+                            .cornerRadius(8)
+                            .foregroundColor(.white)
+                        }
+                        .padding(30)
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(16)
+                        .onAppear {
+                            print("⚠️ Media fallback view appeared - Debug Info:")
+                            print("  ➡️ viewModel.selectedImage: \(viewModel.selectedImage != nil ? "exists" : "nil")")
+                            print("  ➡️ viewModel.selectedVideo: \(viewModel.selectedVideo != nil ? "exists" : "nil")")
+                            print("  ➡️ localImageRef: \(localImageRef != nil ? "exists" : "nil")")
+                            print("  ➡️ localVideoRef: \(localVideoRef != nil ? "exists" : "nil")")
+                            
+                            // Try to recover media if we have local refs but view model refs are nil
+                            if viewModel.selectedImage == nil && localImageRef != nil {
+                                print("🔄 Attempting to recover image reference from local copy")
+                                viewModel.setSelectedImage(localImageRef)
+                            }
+                            
+                            if viewModel.selectedVideo == nil && localVideoRef != nil {
+                                print("🔄 Attempting to recover video reference from local copy")
+                                viewModel.setSelectedVideo(localVideoRef)
+                            }
+                            
+                            // Ask the view model to restore media from its cache as well
+                            viewModel.restoreMediaReferences()
+                        }
+                    }
+                }
+                
+                // Text overlays
+                ForEach(viewModel.textOverlays) { overlay in
+                    TextOverlayView(
+                        overlay: overlay,
+                        isSelected: viewModel.selectedTextOverlay == overlay.id,
+                        isEditing: activeTextEditId == overlay.id,
+                        onEdit: {
+                            // Enter text edit mode
+                            activeTextEditId = overlay.id
+                            textInput = overlay.text
+                        },
+                        onMove: { newPosition in
+                            // Update text position
+                            if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
+                                viewModel.textOverlays[index].position = newPosition
+                            }
+                        },
+                        onRotate: { angle in
+                            // Update text rotation
+                            if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
+                                viewModel.textOverlays[index].rotation += angle
+                            }
+                        },
+                        onDelete: {
+                            // Delete overlay
+                            viewModel.removeTextOverlay(id: overlay.id)
+                        },
+                        onSelect: {
+                            // Select this overlay
+                            viewModel.selectedTextOverlay = overlay.id
+                        },
+                        isEnabled: viewModel.editingMode == .text
+                    )
+                }
+                
+                // Custom navigation bar - minimalist Instagram style
+                VStack {
+                    HStack {
+                        // Cancel button
+                        Button(action: onCancel) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(8)
+                        }
+                        
+                        Spacer()
+                        
+                        // Next/Share button
+                        Button(action: {
+                            // Ensure we have strong references to media before proceeding
+                            if viewModel.selectedImage == nil && localImageRef != nil {
+                                print("Restoring image reference before sharing")
+                                viewModel.setSelectedImage(localImageRef)
+                            }
+                            
+                            if viewModel.selectedVideo == nil && localVideoRef != nil {
+                                print("Restoring video reference before sharing")
+                                viewModel.setSelectedVideo(localVideoRef)
+                            }
+                            
+                            // Commit current transform
+                            viewModel.currentImageScale *= scale
+                            viewModel.currentImageOffset = CGSize(
+                                width: viewModel.currentImageOffset.width + offset.width,
+                                height: viewModel.currentImageOffset.height + offset.height
+                            )
+                            scale = 1.0
+                            offset = .zero
+                            
+                            // Share story
+                            onShare()
+                        }) {
+                            Text("Share")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.blue)
+                                .cornerRadius(16)
+                        }
+                        .disabled(viewModel.isLoading || (viewModel.selectedImage == nil && viewModel.selectedVideo == nil && localImageRef == nil && localVideoRef == nil))
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, geometry.safeAreaInsets.top > 0 ? 0 : 10)
+                    .background(Color.black.opacity(0.3))
+                    
+                    Spacer()
+                    
+                    // Bottom toolbar area
+                    toolOverlays
+                }
+                .edgesIgnoringSafeArea(.top)
+                
+                // Text editing overlay
+                textEditingOverlay
+                
+                // Loading overlay
+                if viewModel.isLoading {
+                    loadingOverlay
+                }
+            }
+            .preferredColorScheme(.dark)
+            .statusBar(hidden: true)
+            .onAppear {
+                print("Story editor appeared")
+                print("📊 Media Status on Appear:")
+                print("  ➡️ viewModel.selectedImage: \(viewModel.selectedImage != nil ? "exists" : "nil")")
+                print("  ➡️ viewModel.selectedVideo: \(viewModel.selectedVideo != nil ? "exists" : "nil")")
+                
+                // Reset transform state
+                scale = 1.0
+                offset = .zero
+                
+                // Ensure we have local references to media
+                if localImageRef == nil {
+                    localImageRef = viewModel.selectedImage
+                    if viewModel.selectedImage != nil {
+                        print("📥 Created local image reference on appear")
+                    }
+                }
+                
+                if localVideoRef == nil {
+                    localVideoRef = viewModel.selectedVideo
+                    if viewModel.selectedVideo != nil {
+                        print("📥 Created local video reference on appear")
+                    }
+                }
+            }
+        }
+        .coordinateSpace(name: "container")
+        .edgesIgnoringSafeArea(.all)
+    }
+    
+    // Drawing canvas overlay
+    private var drawingCanvasOverlay: some View {
+        Group {
+            if viewModel.editingMode == .draw {
+                Canvas { context, size in
+                    // Draw completed paths
+                    for path in viewModel.drawingPaths {
+                        var stroke = Path()
+                        if path.points.count >= 2 {
+                            stroke.move(to: path.points[0])
+                            for point in path.points.dropFirst() {
+                                stroke.addLine(to: point)
+                            }
+                        }
+                        context.stroke(stroke, with: .color(path.color), lineWidth: path.lineWidth)
+                    }
+                    
+                    // Draw current path
+                    if let currentPath = viewModel.currentDrawingPath {
+                        var stroke = Path()
+                        if currentPath.points.count >= 2 {
+                            stroke.move(to: currentPath.points[0])
+                            for point in currentPath.points.dropFirst() {
+                                stroke.addLine(to: point)
+                            }
+                        }
+                        context.stroke(stroke, with: .color(currentPath.color), lineWidth: currentPath.lineWidth)
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                        .onChanged { value in
+                            let location = value.location
+                            
+                            if viewModel.currentDrawingPath == nil {
+                                viewModel.startDrawing(at: location)
+                            } else {
+                                viewModel.continueDrawing(to: location)
+                            }
+                        }
+                        .onEnded { _ in
+                            viewModel.endDrawing()
+                        }
+                )
+            }
+        }
+    }
+    
+    // Enhanced tool options bar
+    private var toolOverlays: some View {
+        Group {
+            switch viewModel.editingMode {
+            case .transform:
+                EmptyView() // Transform options are hidden
+                
+            case .text:
+                // Text tool options bar
+                HStack(spacing: 20) {
+                    // Add text button
+                    Button(action: {
+                        viewModel.maintainEditingMode()
+                        DispatchQueue.main.async {
+                            viewModel.addTextOverlay()
+                        }
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                    }
+                    
+                    // Color options
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            let colors: [Color] = [.white, .yellow, .red, .blue, .green, .pink, .purple, .orange]
+                            
+                            ForEach(colors, id: \.self) { color in
+                                Circle()
+                                    .fill(color)
+                                    .frame(width: 24, height: 24)
+                                    .onTapGesture {
+                                        if let selectedId = viewModel.selectedTextOverlay,
+                                           let index = viewModel.textOverlays.firstIndex(where: { $0.id == selectedId }) {
+                                            viewModel.textOverlays[index].color = color
+                                        } else if !viewModel.textOverlays.isEmpty {
+                                            viewModel.selectedTextOverlay = viewModel.textOverlays.first?.id
+                                        }
+                                    }
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                    }
+                    .frame(height: 35)
+                    
+                    Spacer()
+                    
+                    // Font style toggle
+                    Button(action: {
+                        let newFont = viewModel.selectedFontName == "System" ? "System Bold" : "System"
+                        viewModel.updateTextFont(fontName: newFont)
+                    }) {
+                        Image(systemName: "bold")
+                            .font(.system(size: 18))
+                            .foregroundColor(viewModel.selectedFontName == "System Bold" ? .white : .white.opacity(0.7))
+                    }
+                    
+                    // Font size adjust
+                    HStack(spacing: 15) {
+                        Button(action: {
+                            let newSize = max(16, viewModel.selectedFontSize - 4)
+                            viewModel.updateTextFont(fontName: viewModel.selectedFontName, fontSize: newSize)
+                        }) {
+                            Image(systemName: "minus")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                        
+                        Button(action: {
+                            let newSize = min(60, viewModel.selectedFontSize + 4)
+                            viewModel.updateTextFont(fontName: viewModel.selectedFontName, fontSize: newSize)
+                        }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.4))
+                .cornerRadius(20)
+                .padding(.horizontal, 16)
+                
+            case .draw:
+                // Draw tool options bar
+                HStack(spacing: 20) {
+                    // Clear button
+                    Button(action: {
+                        viewModel.clearDrawings()
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                    }
+                    
+                    // Undo button
+                    Button(action: {
+                        if !viewModel.drawingPaths.isEmpty {
+                            viewModel.undoLastDrawing()
+                        }
+                    }) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 18))
+                            .foregroundColor(.white)
+                    }
+                    
+                    Divider()
+                        .background(Color.white.opacity(0.5))
+                        .frame(height: 20)
+                    
+                    // Brush size
+                    HStack(spacing: 12) {
+                        ForEach([3.0, 6.0, 10.0], id: \.self) { size in
+                            Circle()
+                                .fill(viewModel.brushColor)
+                                .frame(width: size, height: size)
+                                .padding(8)
+                                .background(
+                                    Circle()
+                                        .stroke(viewModel.brushSize == size ? Color.white : Color.clear, lineWidth: 1)
+                                )
+                                .onTapGesture {
+                                    viewModel.brushSize = size
+                                }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Color picker
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            let brushColors: [Color] = [.white, .black, .yellow, .red, .blue, .green]
+                            
+                            ForEach(brushColors, id: \.self) { color in
+                                Circle()
+                                    .fill(color)
+                                    .frame(width: 20, height: 20)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(viewModel.brushColor == color ? Color.white : Color.clear, lineWidth: 1)
+                                    )
+                                    .onTapGesture {
+                                        viewModel.brushColor = color
+                                    }
+                            }
+                        }
+                    }
+                    .frame(width: 120)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.4))
+                .cornerRadius(20)
+                .padding(.horizontal, 16)
+                
+            case .stickers:
+                // Simplified stickers bar
+                HStack {
+                    Text("Stickers Coming Soon")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.4))
+                .cornerRadius(20)
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+    
+    // Text editing overlay
+    private var textEditingOverlay: some View {
+        Group {
+            if let editId = activeTextEditId,
+               let index = viewModel.textOverlays.firstIndex(where: { $0.id == editId }) {
+                TextEditorOverlay(
+                    text: $textInput,
+                    textColor: viewModel.textOverlays[index].color,
+                    fontName: viewModel.textOverlays[index].fontName,
+                    fontSize: viewModel.textOverlays[index].fontSize,
+                    getFont: getFont,
+                    onDone: {
+                        // Ensure we maintain text mode
+                        viewModel.textOverlays[index].text = textInput
+                        // Make sure we stay in text editing mode
+                        viewModel.editingMode = .text
+                        viewModel.shouldKeepEditing = true
+                        DispatchQueue.main.async {
+                            activeTextEditId = nil
+                            // Ensure we have the right text overlay selected
+                            viewModel.selectedTextOverlay = editId
+                            viewModel.maintainEditingMode()
+                        }
+                    },
+                    onColorChange: { color in
+                        DispatchQueue.main.async {
+                            viewModel.textOverlays[index].color = color
+                            viewModel.maintainEditingMode()
+                        }
+                    },
+                    onFontChange: { fontName in
+                        DispatchQueue.main.async {
+                            viewModel.updateTextFont(fontName: fontName)
+                            viewModel.maintainEditingMode()
+                        }
+                    },
+                    onSizeChange: { fontSize in
+                        DispatchQueue.main.async {
+                            viewModel.updateTextFont(fontName: viewModel.selectedFontName, fontSize: fontSize)
+                            viewModel.maintainEditingMode()
+                        }
+                    },
+                    availableFonts: viewModel.availableFonts,
+                    availableFontSizes: viewModel.availableFontSizes
+                )
+            }
+        }
+    }
+    
+    // Loading overlay
+    private var loadingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.7)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 20) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+                
+                Text("Uploading story...")
+                    .font(.headline)
+                    .foregroundColor(.white)
+            }
+        }
+    }
+    
+    // Transform gesture
+    private func transformGesture(geometry: GeometryProxy) -> some Gesture {
+        let dragGesture = DragGesture()
+            .updating($isDragging) { _, state, _ in
+                state = true
+            }
+            .onChanged { value in
+                self.offset = CGSize(
+                    width: self.lastOffset.width + value.translation.width,
+                    height: self.lastOffset.height + value.translation.height
+                )
+                // Ensure we stay in transform mode
+                viewModel.maintainEditingMode()
+            }
+            .onEnded { value in
+                self.lastOffset = self.offset
+                // Apply transform to view model
+                viewModel.applyTransform(scale: 1.0, offset: CGSize(
+                    width: value.translation.width,
+                    height: value.translation.height
+                ))
+            }
+        
+        let magnificationGesture = MagnificationGesture()
+            .onChanged { value in
+                self.scale = max(0.5, self.lastScale * value)
+                // Ensure we stay in transform mode
+                viewModel.maintainEditingMode()
+            }
+            .onEnded { value in
+                self.lastScale = self.scale
+                // Apply scale to view model
+                viewModel.applyTransform(scale: value, offset: .zero)
+            }
+        
+        return SimultaneousGesture(dragGesture, magnificationGesture)
+    }
+}
+
+// MARK: - Text Overlay Views
+
+struct TextOverlayView: View {
+    let overlay: TextOverlay
+    let isSelected: Bool
+    let isEditing: Bool
+    let onEdit: () -> Void
+    let onMove: (CGPoint) -> Void
+    let onRotate: (CGFloat) -> Void
+    let onDelete: () -> Void
+    let onSelect: () -> Void
+    let isEnabled: Bool
+    
+    @State private var position: CGPoint
+    @State private var startRotation: Angle = .zero
+    @GestureState private var rotation: Angle = .zero
+    @GestureState private var isDragging: Bool = false
+    
+    init(overlay: TextOverlay, isSelected: Bool, isEditing: Bool, onEdit: @escaping () -> Void, onMove: @escaping (CGPoint) -> Void, onRotate: @escaping (CGFloat) -> Void, onDelete: @escaping () -> Void, onSelect: @escaping () -> Void, isEnabled: Bool) {
+        self.overlay = overlay
+        self.isSelected = isSelected
+        self.isEditing = isEditing
+        self.onEdit = onEdit
+        self.onMove = onMove
+        self.onRotate = onRotate
+        self.onDelete = onDelete
+        self.onSelect = onSelect
+        self.isEnabled = isEnabled
+        self._position = State(initialValue: overlay.position)
+    }
+    
+    var body: some View {
+        ZStack {
+            // Text with styling and gestures
+            Text(overlay.text)
+                .font(getFont(name: overlay.fontName, size: overlay.fontSize))
+                .foregroundColor(overlay.color)
+                .fixedSize()
+                .padding(isSelected ? 8 : 0)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .stroke(isSelected ? Color.white : Color.clear, lineWidth: 1)
+                        .background(Color.clear)
+                )
+                .rotationEffect(Angle(radians: Double(overlay.rotation)) + rotation)
+                .position(position)
+                .opacity(isEditing ? 0 : 1)
+                .gesture(
+                    isEnabled ?
+                    DragGesture(coordinateSpace: .named("container"))
+                        .updating($isDragging) { _, state, _ in
+                            state = true
+                        }
+                        .onChanged { value in
+                            self.position = value.location
+                        }
+                        .onEnded { value in
+                            onMove(value.location)
+                        } : nil
+                )
+                .simultaneousGesture(
+                    isEnabled && isSelected ?
+                    RotationGesture()
+                        .updating($rotation) { angle, state, _ in
+                            state = angle
+                        }
+                        .onEnded { angle in
+                            onRotate(CGFloat(angle.radians))
+                        } : nil
+                )
+                .onTapGesture {
+                    if isEnabled {
+                        // Force state to update on main thread to prevent disappearing
+                        DispatchQueue.main.async {
+                            if isSelected {
+                                onEdit()
+                            } else {
+                                print("Text overlay selected")
+                                onSelect()
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Delete button when selected
+            if isSelected && isEnabled {
+                VStack {
+                    // We need to use a spacer to position the button relative to the text
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .background(Circle().fill(Color.red))
+                    }
+                    .offset(x: -50, y: -30)
+                }
+                .position(position)
+            }
+        }
+    }
+    
+    // Helper to convert font name to SwiftUI Font
+    private func getFont(name: String, size: CGFloat) -> Font {
+        switch name {
+        case "System Bold":
+            return .system(size: size, weight: .bold)
+        case "System Italic":
+            return .system(size: size, design: .serif).italic()
+        case "Helvetica":
+            return .custom("Helvetica", size: size)
+        case "Arial":
+            return .custom("Arial", size: size)
+        case "Georgia":
+            return .custom("Georgia", size: size)
+        default:
+            return .system(size: size)
+        }
+    }
+}
+
+struct TextEditorOverlay: View {
+    @Binding var text: String
+    let textColor: Color
+    let fontName: String
+    let fontSize: CGFloat
+    let getFont: (String, CGFloat) -> Font
+    let onDone: () -> Void
+    let onColorChange: (Color) -> Void
+    let onFontChange: (String) -> Void
+    let onSizeChange: (CGFloat) -> Void
+    let availableFonts: [String]
+    let availableFontSizes: [CGFloat]
+    
+    @State private var selectedColor: Color
+    
+    init(text: Binding<String>, textColor: Color, fontName: String, fontSize: CGFloat, getFont: @escaping (String, CGFloat) -> Font, onDone: @escaping () -> Void, onColorChange: @escaping (Color) -> Void, onFontChange: @escaping (String) -> Void, onSizeChange: @escaping (CGFloat) -> Void, availableFonts: [String], availableFontSizes: [CGFloat]) {
+        self._text = text
+        self.textColor = textColor
+        self.fontName = fontName
+        self.fontSize = fontSize
+        self.getFont = getFont
+        self.onDone = onDone
+        self.onColorChange = onColorChange
+        self.onFontChange = onFontChange
+        self.onSizeChange = onSizeChange
+        self._selectedColor = State(initialValue: textColor)
+        self.availableFonts = availableFonts
+        self.availableFontSizes = availableFontSizes
+    }
+    
+    var body: some View {
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.7)
+                .edgesIgnoringSafeArea(.all)
+                .onTapGesture {
+                    onDone()
+                }
+            
+            // Editor panel
+            editorPanelView
+        }
+    }
+    
+    private var editorPanelView: some View {
+        VStack(spacing: 20) {
+            // Text field
+            textFieldView
+            
+            // Font selection
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 15) {
+                    ForEach(availableFonts, id: \.self) { name in
+                        Text("Aa")
+                            .font(getFont(name, fontSize))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(fontName == name ? Color.blue.opacity(0.5) : Color.gray.opacity(0.3))
+                            )
+                            .onTapGesture {
+                                onFontChange(name)
+                            }
+                    }
+                }
+            }
+            
+            // Font size selection
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 15) {
+                    ForEach(availableFontSizes, id: \.self) { size in
+                        Text("\(Int(size))")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(fontSize == size ? Color.blue.opacity(0.5) : Color.gray.opacity(0.3))
+                            )
+                            .onTapGesture {
+                                onSizeChange(size)
+                            }
+                    }
+                }
+            }
+            
+            // Color selection
+            colorSelectionView
+            
+            // Done button
+            doneButtonView
+        }
+        .padding(24)
+        .background(Color(UIColor.systemGray6).opacity(0.9))
+        .cornerRadius(16)
+        .padding(.horizontal, 20)
+    }
+    
+    private var textFieldView: some View {
+        TextField("Enter text", text: $text)
+            .font(getFont(fontName, fontSize))
+            .foregroundColor(selectedColor)
+            .multilineTextAlignment(.center)
+            .padding()
+            .background(Color.black.opacity(0.5))
+            .cornerRadius(12)
+    }
+    
+    private var colorSelectionView: some View {
+        HStack(spacing: 16) {
+            ForEach(colorOptions, id: \.self) { color in
+                colorCircleView(for: color)
+            }
+        }
+    }
+    
+    private func colorCircleView(for color: Color) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 30, height: 30)
+            .overlay(
+                Circle()
+                    .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 2)
+            )
+            .onTapGesture {
+                selectedColor = color
+                onColorChange(color)
+            }
+    }
+    
+    private var doneButtonView: some View {
+        Button(action: onDone) {
+            Text("Done")
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal, 30)
+                .padding(.vertical, 10)
+                .background(Color.blue)
+                .cornerRadius(20)
+        }
+        .padding(.top, 10)
+    }
+    
+    private var colorOptions: [Color] {
+        [.white, .yellow, .red, .blue, .green, .purple, .orange]
+    }
+} 

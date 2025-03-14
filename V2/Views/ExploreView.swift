@@ -4,7 +4,8 @@ import CoreLocation
 
 struct ExploreView: View {
     @ObservedObject var viewModel: MeetViewModel
-    @StateObject private var locationManager = LocationManager()
+    @StateObject private var routeViewModel = RouteViewModel()
+    @StateObject private var locationManager: LocationManager = LocationManager()
     @State private var cameraPosition = MapCameraPosition.region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
         span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
@@ -13,79 +14,110 @@ struct ExploreView: View {
     @State private var showFullDetails = false
     @State private var errorMessage: String?
     @State private var searchText = ""
-    @State private var isShowingMap = false
+    @State private var isShowingMap = true
     @State private var initialLocationSet = false
     @State private var showingCreateMeet = false
     @State private var showSearchResults = false
     @State private var isLoading = false
+    @State private var showingRouteView = false
+    @State private var mapIsTilted = false
+    
+    // Add a property to handle tab selection changes
+    @State private var selectedTab: String?
     
     var body: some View {
-        ZStack {
-            // Replace static background with animated gradient
-            AnimatedGradientBackground()
-            
-            VStack(spacing: 0) {
-                // Custom Header
-                customHeader
-                    .background(Color.black.opacity(0.2))
-                    .mediumShadow()
-                
-                // Content Stack
-                ZStack {
-                    if showSearchResults && !viewModel.searchQuery.isEmpty {
-                        // Location search results view
-                        searchResultsView
-                    } else {
-                        // Map content
-                        mapView
+        NavigationView {
+            ZStack {
+                // Map or list content
+                if isShowingMap {
+                    mapView
+                } else {
+                    ZStack {
+                        AnimatedGradientBackground()
                         
-                        // Preview Card
-                        meetPreviewCardView
-                    }
-                    
-                    // Floating Action Button for Create
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button(action: {
-                                showingCreateMeet = true
-                            }) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.black)
-                                    .frame(width: 50, height: 50)
-                                    .background(Color.white)
-                                    .clipShape(Circle())
-                                    .overlay(
-                                        Circle()
-                                            .stroke(Color.black, lineWidth: 1.5)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        // Search results or list content
+                        if showSearchResults {
+                            searchResultsView
+                        } else {
+                            // Scrollable content with meets
+                            ScrollView {
+                                meetListContent
                             }
-                            .padding(.trailing, 16)
-                            .padding(.bottom, 100)
                         }
                     }
                 }
+                
+                // Floating header
+                VStack {
+                    // Search and toggle controls
+                    searchAndToggleBar
+                    
+                    // Floating action buttons (Create meet, Feed)
+                    if !showSearchResults {
+                        VStack {
+                            Spacer()
+                            
+                            // Action buttons at the bottom 
+                            HStack(spacing: 16) {
+                                Spacer()
+                                
+                                // Feed button - changed from Routes button
+                                Button {
+                                    // Show route view instead of changing tabs
+                                    showingRouteView = true
+                                } label: {
+                                    Image(systemName: "map.fill")
+                                        .font(.system(size: 24))
+                                        .frame(width: 56, height: 56)
+                                        .background(Circle().fill(Color.white))
+                                        .foregroundColor(.black)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.black, lineWidth: 1.5)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.15), radius: 5, x: 0, y: 2)
+                                }
+                                
+                                // Create meet button
+                                Button {
+                                    showingCreateMeet = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 24))
+                                        .frame(width: 56, height: 56)
+                                        .background(Circle().fill(Color.white))
+                                        .foregroundColor(.black)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(Color.black, lineWidth: 1.5)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.15), radius: 5, x: 0, y: 2)
+                                }
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 32) // Add padding to lift them above the bottom tab bar
+                        }
+                    }
+                }
+                
+                // Selected meet preview card
+                meetPreviewCardView
             }
+            .environmentObject(locationManager)
+            .navigationBarTitle("", displayMode: .inline)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showingCreateMeet) {
                 CreateMeetOnboardingView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingRouteView) {
+                RoutesView()
             }
             .sheet(isPresented: $showFullDetails) {
                 if let meet = selectedMeet {
                     NavigationView {
-                        MeetFullDetails(meet: meet, viewModel: viewModel)
-                            .background(MeetSpotColors.backgroundGradient)
+                        MeetDetailView(meet: meet, viewModel: viewModel)
                             .navigationBarTitleDisplayMode(.inline)
-                            .toolbar {
-                                ToolbarItem(placement: .navigationBarTrailing) {
-                                    Button("Done") {
-                                        showFullDetails = false
-                                    }
-                                    .foregroundColor(.white)
-                                }
-                            }
+                            .navigationBarItems(trailing: Button("Done") { showFullDetails = false })
                     }
                 }
             }
@@ -99,6 +131,7 @@ struct ExploreView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .edgesIgnoringSafeArea(.bottom)
         .onAppear {
             // Force immediate refresh when view appears
@@ -209,37 +242,74 @@ private struct MapAnnotationView: View {
     let isSelected: Bool
     let onTap: () -> Void
     
-    private var circleFill: AnyShapeStyle {
-        isSelected ? AnyShapeStyle(MeetSpotColors.secondaryGradient) : AnyShapeStyle(Color.white)
+    // Computed properties for dynamic styling
+    private var circleFill: Color {
+        isSelected ? MeetSpotColors.purple900 : .white
     }
     
-    private var circleStroke: AnyShapeStyle {
-        isSelected ? AnyShapeStyle(Color.white) : AnyShapeStyle(MeetSpotColors.purple900)
+    private var circleStroke: Color {
+        isSelected ? .white : MeetSpotColors.purple900
     }
     
-    private var triangleFill: AnyShapeStyle {
-        isSelected ? AnyShapeStyle(MeetSpotColors.pink500) : AnyShapeStyle(Color.white)
+    private var iconColor: Color {
+        isSelected ? .white : MeetSpotColors.purple900
+    }
+    
+    private var iconName: String {
+        switch meet.vehicleType {
+        case .car:
+            return "car.fill"
+        case .bike:
+            return "motorcycle"
+        case .both, .mixed:
+            return "car.2"
+        }
     }
     
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            print("Annotation tapped directly for meet: \(meet.title)")
+            onTap()
+        }) {
             VStack(spacing: 0) {
-                Circle()
-                    .fill(circleFill)
-                    .frame(width: 24, height: 24)
-                    .overlay(
-                        Circle()
-                            .stroke(circleStroke, lineWidth: 2)
-                    )
-                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                // Main icon circle
+                ZStack {
+                    Circle()
+                        .fill(circleFill)
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Circle()
+                                .stroke(circleStroke, lineWidth: 2)
+                        )
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    
+                    // Vehicle type icon
+                    Image(systemName: iconName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(iconColor)
+                }
                 
+                // Location marker triangle
                 Triangle()
-                    .fill(triangleFill)
+                    .fill(isSelected ? AnyShapeStyle(MeetSpotColors.purple900) : AnyShapeStyle(Color.white))
                     .frame(width: 16, height: 8)
                     .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+                
+                // Add premium indicator if needed
+                if meet.isPremium && isSelected {
+                    Circle()
+                        .fill(Color.yellow)
+                        .frame(width: 10, height: 10)
+                        .overlay(
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 6, weight: .bold))
+                                .foregroundColor(.white)
+                        )
+                        .offset(x: 12, y: -24)
+                }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlainButtonStyle()) // Prevents default button styling
     }
 }
 
@@ -260,7 +330,7 @@ private extension ExploreView {
             // Show user location if available
             if locationManager.location != nil {
                 UserAnnotation()
-                    .tint(MeetSpotColors.pink500)
+                    .tint(MeetSpotColors.purple900)
             }
             
             ForEach(viewModel.meets) { meet in
@@ -269,28 +339,98 @@ private extension ExploreView {
                         meet: meet,
                         isSelected: selectedMeet?.id == meet.id,
                         onTap: {
-                            withAnimation(.spring(response: 0.3)) {
-                                selectedMeet = meet
+                            print("MapAnnotationView tap received for meet: \(meet.title)")
+                            if selectedMeet?.id == meet.id {
+                                // If already selected, show full details directly
+                                print("Already selected, showing detail sheet directly")
+                                showFullDetails = true
+                            } else {
+                                // Otherwise just select the meet
+                                selectMeet(meet)
                             }
                         }
                     )
                 }
+                .annotationTitles(.hidden) // Hide the default title popup
+                .tag(meet.id) // Add a tag to help with identification
             }
         }
         .mapStyle(.standard(elevation: .realistic))
-        .overlay(mapOverlayGradient)
-        .ignoresSafeArea(edges: .bottom)
         .mapControls {
-            MapUserLocationButton()
-                .mapControlVisibility(.visible)
+            // Use built-in MapKit controls for compass and scale
             MapCompass()
-                .mapControlVisibility(.visible)
             MapScaleView()
-                .mapControlVisibility(.visible)
-            MapPitchToggle()
-                .mapControlVisibility(.visible)
+                .padding([.bottom], 50)
         }
-        .onTapGesture(perform: handleMapTap)
+        .overlay(mapOverlayGradient)
+        .overlay(
+            // Custom positioned map controls to prevent header overlap
+            VStack(spacing: 12) {
+                // Add a spacer to push controls below the header
+                Spacer()
+                    .frame(height: 160)
+                
+                // User location button
+                Button {
+                    if let location = locationManager.location {
+                        updateRegionForLocation(location)
+                    } else {
+                        locationManager.requestLocation()
+                    }
+                } label: {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.black)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.white))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
+                }
+                
+                // 3D toggle button
+                Button {
+                    // Toggle map elevation
+                    if mapIsTilted {
+                        cameraPosition = .camera(MapCamera(
+                            centerCoordinate: cameraPosition.camera?.centerCoordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                            distance: cameraPosition.camera?.distance ?? 1000,
+                            heading: cameraPosition.camera?.heading ?? 0,
+                            pitch: 0 // Flat
+                        ))
+                    } else {
+                        cameraPosition = .camera(MapCamera(
+                            centerCoordinate: cameraPosition.camera?.centerCoordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                            distance: cameraPosition.camera?.distance ?? 1000,
+                            heading: cameraPosition.camera?.heading ?? 0,
+                            pitch: 60 // Tilted
+                        ))
+                    }
+                    mapIsTilted.toggle()
+                } label: {
+                    Image(systemName: mapIsTilted ? "view.2d" : "view.3d")
+                        .font(.system(size: 16))
+                        .foregroundColor(.black)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.white))
+                        .overlay(
+                            Circle()
+                                .stroke(Color.black, lineWidth: 1.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.15), radius: 4, x: 0, y: 2)
+                }
+            }
+            .padding(.trailing, 16)
+            .padding(.top, 16),
+            alignment: .topTrailing
+        )
+        .ignoresSafeArea(edges: .bottom)
+        .onTapGesture {
+            // Only handle taps on the map background, not on annotations
+            handleMapTap(CGPoint(x: 0, y: 0))
+        }
         .onAppear(perform: setupInitialLocation)
         .onChange(of: locationManager.location) { _, newLocation in
             if let newLocation = newLocation, !initialLocationSet {
@@ -307,8 +447,8 @@ private extension ExploreView {
                 Color.black.opacity(0.1),
                 Color.black.opacity(0.2)
             ]),
-            startPoint: .top,
-            endPoint: .bottom
+            startPoint: UnitPoint.top,
+            endPoint: UnitPoint.bottom
         )
         .allowsHitTesting(false)
         .ignoresSafeArea()
@@ -353,7 +493,7 @@ private extension ExploreView {
                         VStack(spacing: 0) {
                             // Handle for dragging
                             RoundedRectangle(cornerRadius: 2.5)
-                                .fill(Color.white.opacity(0.3))
+                                .fill(Color.white.opacity(0.5))
                                 .frame(width: 36, height: 5)
                                 .padding(.vertical, 8)
                             
@@ -361,7 +501,9 @@ private extension ExploreView {
                             previewContent(for: meet)
                         }
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(
+                        AnyTransition.move(edge: .bottom).combined(with: .opacity)
+                    )
                 }
                 .gesture(
                     DragGesture()
@@ -391,27 +533,38 @@ private extension ExploreView {
             // Location
             HStack {
                 Image(systemName: "mappin.circle.fill")
-                    .foregroundColor(MeetSpotColors.pink500)
+                    .foregroundColor(.white)
                 MeetSpotType.caption(meet.address)
             }
             
             // Date and capacity
             HStack {
                 Image(systemName: "calendar")
-                    .foregroundColor(MeetSpotColors.pink500)
+                    .foregroundColor(.white)
                 MeetSpotType.caption(meet.formattedDate)
                 
                 Spacer()
                 
                 Image(systemName: "person.3.fill")
-                    .foregroundColor(MeetSpotColors.pink500)
+                    .foregroundColor(.white)
                 MeetSpotType.caption("\(meet.attendees.count)/\(meet.capacity)")
+            }
+            
+            // Status indicator
+            HStack {
+                Image(systemName: meet.status.icon)
+                    .foregroundColor(.white)
+                MeetSpotType.caption(meet.status.displayName)
             }
             
             // Action buttons
             HStack(spacing: 12) {
                 Button {
-                    showFullDetails = true
+                    print("View Details tapped for meet: \(meet.id), status: \(meet.status.rawValue)")
+                    // Force sheet to present regardless of other conditions
+                    DispatchQueue.main.async {
+                        showFullDetails = true
+                    }
                 } label: {
                     MeetSpotUI.Buttons.primary("View Details")
                 }
@@ -430,9 +583,32 @@ private extension ExploreView {
 // MARK: - Helper Methods
 private extension ExploreView {
     func handleMapTap(_ location: CGPoint) {
+        // Only dismiss selected meet if one is currently selected
+        // This avoids interfering with annotation taps
         if selectedMeet != nil {
+            print("Background map tapped, dismissing selected meet")
             withAnimation(.spring(response: 0.3)) {
                 selectedMeet = nil
+            }
+        }
+    }
+    
+    // New function to handle meet selection consistently
+    func selectMeet(_ meet: Meet, showDetailSheet: Bool = false) {
+        print("Selecting meet: \(meet.title), ID: \(meet.id), status: \(meet.status.rawValue)")
+        
+        // Ensure selections are always on main thread
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.3)) {
+                selectedMeet = meet
+            }
+            
+            // If showDetailSheet is true, present the sheet after a tiny delay to ensure state is updated
+            if showDetailSheet {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    print("Opening detail sheet for meet: \(meet.id)")
+                    showFullDetails = true
+                }
             }
         }
     }
@@ -464,120 +640,6 @@ struct Triangle: Shape {
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
         return path
-    }
-}
-
-// Location Manager to handle user location
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let locationManager = CLLocationManager()
-    @Published var location: CLLocation?
-    @Published var authorizationStatus: CLAuthorizationStatus?
-    @Published var locationError: Error?
-    private var locationTimer: Timer?
-    @Published var lastRequestTime: Date = Date(timeIntervalSince1970: 0)
-    
-    override init() {
-        super.init()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        print("LocationManager initialized")
-        
-        // Check initial authorization status
-        let status = locationManager.authorizationStatus
-        print("Initial authorization status: \(status.rawValue)")
-        authorizationStatus = status
-        
-        // If already authorized, try to get location immediately
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            locationManager.startUpdatingLocation()
-        }
-    }
-    
-    func requestLocation() {
-        // Throttle requests to prevent excessive polling
-        let now = Date()
-        if now.timeIntervalSince(lastRequestTime) < 3.0 {
-            print("⚠️ LocationManager - THROTTLING LOCATION REQUEST - too soon after previous request")
-            return
-        }
-        
-        lastRequestTime = now
-        print("LocationManager - requestLocation called")
-        locationManager.requestWhenInUseAuthorization()
-        
-        // Reset any previous errors
-        locationError = nil
-        
-        // Reset any existing timer
-        locationTimer?.invalidate()
-        
-        // Set a timeout for location requests
-        locationTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
-            // If we haven't got a location after 10 seconds, stop trying to prevent battery drain
-            if self?.location == nil {
-                self?.locationManager.stopUpdatingLocation()
-                print("⚠️ Location request timed out after 10 seconds")
-            }
-        }
-        
-        // Check for authorization before starting updates
-        let status = locationManager.authorizationStatus
-        print("Current authorization status when requesting location: \(status.rawValue)")
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            print("Authorization granted, starting location updates")
-            // Stop any existing updates first to ensure a fresh start
-            locationManager.stopUpdatingLocation()
-            locationManager.startUpdatingLocation()
-        } else {
-            print("LocationManager - Not authorized: \(status.rawValue)")
-        }
-    }
-    
-    // Force a location update even if we recently requested one
-    func forceLocationUpdate() {
-        print("LocationManager - FORCING location update (bypassing throttle)")
-        lastRequestTime = Date(timeIntervalSince1970: 0) // Reset the time to force an update
-        requestLocation()
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        // Update on the main thread to ensure UI updates properly
-        DispatchQueue.main.async {
-            if let location = locations.last {
-                // Only update if the location is reasonably accurate
-                if location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 100 {
-                    print("LocationManager - Got location: \(location.coordinate.latitude), \(location.coordinate.longitude) with accuracy: \(location.horizontalAccuracy)")
-                    self.location = location
-                    self.locationError = nil
-                    
-                    // Stop updating location to save battery - we have what we need
-                    self.locationManager.stopUpdatingLocation()
-                } else {
-                    print("LocationManager - Received inaccurate location: \(location.horizontalAccuracy) meters")
-                }
-            }
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        DispatchQueue.main.async {
-            self.locationError = error
-            // If we get a location error, still try to continue with the last known location if available
-            print("LocationManager - Location error: \(error.localizedDescription)")
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        print("LocationManager - Authorization status changed to: \(status.rawValue)")
-        authorizationStatus = status
-        
-        // If authorization changed to authorized, request location again
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            print("LocationManager - Now authorized, starting location updates")
-            locationManager.startUpdatingLocation()
-        } else {
-            print("LocationManager - Not authorized: \(status.rawValue)")
-        }
     }
 }
 
@@ -691,57 +753,6 @@ struct MeetPreviewCard: View {
     }
 }
 
-struct ReplyView: View {
-    let comment: MeetComment
-    let meet: Meet
-    let viewModel: MeetViewModel
-    @Binding var replyText: String
-    @Environment(\.dismiss) private var dismiss
-    @State private var errorMessage: String?
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section {
-                    TextField("Reply to \(viewModel.users.first { $0.id == comment.userId }?.profile.name ?? "comment")", text: $replyText)
-                }
-                
-                Section {
-                    Button("Send Reply") {
-                        Task {
-                            do {
-                                try await viewModel.addReply(replyText, to: comment, in: meet)
-                                dismiss()
-                            } catch {
-                                errorMessage = error.localizedDescription
-                            }
-                        }
-                    }
-                    .disabled(replyText.isEmpty)
-                }
-            }
-            .navigationTitle("Reply")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            .alert("Error", isPresented: .constant(errorMessage != nil)) {
-                Button("OK") {
-                    errorMessage = nil
-                }
-            } message: {
-                if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Custom View Modifiers
 struct GlassmorphicCard: ViewModifier {
     func body(content: Content) -> some View {
@@ -828,7 +839,7 @@ private struct LocationSearchResultRow: View {
             HStack {
                 Image(systemName: "mappin.circle.fill")
                     .font(.title2)
-                    .foregroundColor(MeetSpotColors.pink500)
+                    .foregroundColor(MeetSpotColors.purple900)
                 
                 VStack(alignment: .leading) {
                     Text(location.name)
@@ -917,4 +928,144 @@ private struct MeetSearchResultRow: View {
             .padding(.horizontal)
         }
     }
-} 
+}
+
+// MARK: - Missing Components
+private extension ExploreView {
+    // Extracted list content for displaying meets
+    var meetListContent: some View {
+        VStack(spacing: 16) {
+            ForEach(viewModel.meets) { meet in
+                Button {
+                    print("List item tapped for meet: \(meet.title)")
+                    selectMeet(meet, showDetailSheet: true)
+                } label: {
+                    MeetCardRow(meet: meet)
+                        .padding(.horizontal)
+                }
+            }
+            .padding(.bottom, 4)
+            
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+                    .padding()
+            }
+            
+            // Safe area spacer
+            Spacer().frame(height: 100)
+        }
+        .padding(.top)
+    }
+    
+    // Search bar and view toggle controls
+    var searchAndToggleBar: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button(action: {
+                    // Toggle between map and list view
+                    withAnimation {
+                        isShowingMap.toggle()
+                    }
+                }) {
+                    Image(systemName: isShowingMap ? "list.bullet" : "map")
+                        .font(.title3)
+                        .foregroundColor(Color.white)
+                }
+                
+                Text("Explore Meets")
+                    .font(MeetSpotStyle.Typography.heading2)
+                    .foregroundColor(.white)
+                
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 20) // Increased top padding
+            
+            // Search bar
+            SearchBar(
+                text: $viewModel.searchQuery,
+                placeholder: "Search locations or meets...",
+                onSearch: {
+                    // Perform search on submit
+                    Task {
+                        await viewModel.searchLocations(query: viewModel.searchQuery)
+                    }
+                    showSearchResults = true
+                },
+                onTextChange: { newValue in
+                    // Show search results when typing
+                    Task {
+                        await viewModel.searchLocations(query: newValue)
+                    }
+                    showSearchResults = !newValue.isEmpty
+                }
+            )
+            .padding(.horizontal)
+            .padding(.vertical, 12) // Added vertical padding
+        }
+        .background(
+            // Stronger background for the header area
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.black.opacity(0.7),
+                            Color.black.opacity(0.4),
+                            Color.black.opacity(0.1)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(height: 150) // Increased height
+                .ignoresSafeArea(edges: .top)
+        )
+    }
+}
+
+// Helper component for meet list items
+private struct MeetCardRow: View {
+    let meet: Meet
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(meet.title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                Text(meet.locationName)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(MeetSpotColors.purple900)
+                    Text(meet.formattedDate)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    Spacer()
+                    
+                    Image(systemName: "person.3.fill")
+                        .foregroundColor(MeetSpotColors.purple900)
+                    Text("\(meet.attendees.count)/\(meet.capacity)")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.3))
+        )
+    }
+}
+

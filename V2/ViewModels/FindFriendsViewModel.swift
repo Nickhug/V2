@@ -19,7 +19,7 @@ class FindFriendsViewModel: ObservableObject {
     private let supabase: SupabaseClient
     private let userService: UserService
     private let friendRequestService: FriendRequestService
-    private let locationManager = LocationManager()
+    private let locationManager: LocationManager = LocationManager()
     
     // Current user reference
     private var currentUser: User?

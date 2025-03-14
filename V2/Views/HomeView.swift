@@ -44,10 +44,14 @@ struct HomeView: View {
             // Floating action button
             VStack {
                 Spacer()
-                HStack {
+                
+                HStack(spacing: 16) {
                     Spacer()
+                    
                     createMeetButton
                 }
+                .padding(.trailing, 16)
+                .padding(.bottom, 32)
             }
         }
         // Main container modifiers
@@ -237,23 +241,20 @@ struct HomeView: View {
             showingCreateMeet = true
         }) {
             Image(systemName: "plus")
-                .font(.title2.weight(.semibold))
+                .font(.system(size: 24))
                 .foregroundColor(.black)
-                .frame(width: 60, height: 60)
-                .background(
+                .frame(width: 56, height: 56)
+                .background(Circle().fill(Color.white))
+                .foregroundColor(.black)
+                .overlay(
                     Circle()
-                        .fill(Color.white)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.black, lineWidth: 1.5)
-                        )
+                        .stroke(Color.black, lineWidth: 1.5)
                 )
-                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                .shadow(color: Color.black.opacity(0.15), radius: 5, x: 0, y: 2)
                 .ifNotInTransition(!isInTransition) { view in
                     view
                 }
         }
-        .padding()
         .disabled(isInTransition)
         .opacity(isInTransition ? 0.5 : 1.0)
     }

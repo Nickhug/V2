@@ -10,6 +10,7 @@ enum MeetError: LocalizedError {
     case invalidData
     case imageUploadError
     case unknown
+    case vehicleRequired
     
     var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ enum MeetError: LocalizedError {
             return "Image upload error. Please try again later."
         case .unknown:
             return "An unknown error occurred."
+        case .vehicleRequired:
+            return "A vehicle is required to join this meet."
         }
     }
 }
@@ -68,7 +71,7 @@ class MeetViewModel: ObservableObject {
     private var meetsSubscription: RealtimeChannelV2?
     private var commentsSubscriptions: [String: RealtimeChannelV2] = [:]
     private var pollingTask: Task<Void, Never>?
-    private let locationManager = LocationManager()
+    private let locationManager: LocationManager = LocationManager()
     
     // Add state to track if background operations are paused
     private var areBackgroundOperationsPaused = false
@@ -746,10 +749,16 @@ class MeetViewModel: ObservableObject {
         isLoading = false
     }
     
-    func joinMeet(_ meet: Meet) async throws {
-        guard let userId = currentUser?.id,
-              let vehicleId = currentUser?.vehicles.first?.id else {
+    func joinMeet(_ meet: Meet, vehicleId: String? = nil) async throws {
+        guard let userId = currentUser?.id else {
             throw MeetError.authenticationError
+        }
+        
+        // Use provided vehicleId if available, otherwise fall back to the first vehicle
+        let selectedVehicleId = vehicleId ?? currentUser?.vehicles.first?.id
+        
+        guard let vehicleId = selectedVehicleId else {
+            throw MeetError.vehicleRequired
         }
         
         isLoading = true

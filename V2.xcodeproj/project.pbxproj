@@ -427,6 +427,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to take photos of your vehicles and profile.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to show nearby car meets and events.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show nearby car meets and events.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need access to your microphone to record videos for stories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photos to upload profile pictures and vehicle images.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -459,6 +460,7 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to take photos of your vehicles and profile.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to show nearby car meets and events.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to show nearby car meets and events.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need access to your microphone to record videos for stories.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We need access to your photos to upload profile pictures and vehicle images.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

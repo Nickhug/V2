@@ -1,0 +1,6 @@
+### Fixed
+- [FIX] **Fixed compiler performance issues in StoryCreationView.swift**:
+  - Resolved type-checking timeout by extracting complex onTapGesture handler into a separate method
+  - Improved code maintainability and compilation speed with cleaner code structure
+  - Enhanced reliability of color selection in text overlays
+  - [REF:StoryCreationView.swift]
