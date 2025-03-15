@@ -7,24 +7,32 @@ import Photos
 // Add specific import for camera components
 // No import needed if CameraComponents.swift is part of the same module
 
+// MARK: - Story Creation State
+enum StoryCreationState {
+    case camera
+    case preloading
+    case editor
+}
+
 // MARK: - Main StoryCreationView
 struct StoryCreationView: View {
     @ObservedObject var viewModel: StoryCreationViewModel
     @Binding var isPresented: Bool
     
-    // Add state for tracking preloading status
-    @State private var isPreloadingMedia: Bool = false
-    @State private var showEditor: Bool = false
+    // State management
+    @State private var creationState: StoryCreationState = .camera
+    @State private var isPreloadingMedia = false
+    @State private var showEditor = false
+    
+    // Media references
+    @State private var localImageRef: UIImage?
+    @State private var localVideoRef: URL?
     
     @Environment(\.presentationMode) var presentationMode
     @State private var showPhotosPicker = false
     @State private var photoSelection: PhotosPickerItem? = nil
     @State private var showCaptionSheet = false
     @State private var processingMedia = false
-    
-    // Add local strong references to prevent deallocation
-    @State private var localImageRef: UIImage?
-    @State private var localVideoRef: URL?
     
     // Add a StateObject for the camera view model so it's lifecycle is tied to this view
     @StateObject private var cameraViewModel = CameraViewModel()
@@ -33,10 +41,8 @@ struct StoryCreationView: View {
     
     var body: some View {
         ZStack {
-            // Main content
             Group {
-                if viewModel.showCamera {
-                    // Use the ImprovedCameraPreviewWithOverlay directly
+                if creationState == .camera {
                     ImprovedCameraPreviewWithOverlay(
                         model: cameraViewModel,
                         didCapturePhoto: { image in
@@ -47,12 +53,50 @@ struct StoryCreationView: View {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.impactOccurred()
                             
-                            // Handle photo capture
-                            viewModel.setSelectedImage(image)
-                            viewModel.mediaType = .image
+                            // Create strong reference immediately
+                            localImageRef = image
                             
-                            // Show editing screen with preloading
-                            preloadMediaAndShowEditor()
+                            // Use dispatch group to ensure proper synchronization
+                            let group = DispatchGroup()
+                            group.enter()
+                            
+                            // Update view model with captured image
+                            viewModel.setSelectedImage(image)
+                            
+                            // Wait briefly to ensure image is set
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                // Verify image reference exists
+                                guard viewModel.selectedImage != nil || localImageRef != nil else {
+                                    print("⚠️ Failed to maintain image reference")
+                                    return
+                                }
+                                
+                                // Begin state transition
+                                withAnimation {
+                                    creationState = .preloading
+                                    isPreloadingMedia = true
+                                }
+                                
+                                group.leave()
+                            }
+                            
+                            // Once image is set and state is updated, show editor
+                            group.notify(queue: .main) {
+                                // Final verification and recovery if needed
+                                if viewModel.selectedImage == nil && localImageRef != nil {
+                                    print("🔄 Restoring image reference before showing editor")
+                                    viewModel.setSelectedImage(localImageRef)
+                                }
+                                
+                                // Delay editor presentation slightly
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    withAnimation {
+                                        creationState = .editor
+                                        isPreloadingMedia = false
+                                        showEditor = true
+                                    }
+                                }
+                            }
                         },
                         didCaptureVideo: { videoURL in
                             print("🎥 Video captured at: \(videoURL)")
@@ -61,126 +105,173 @@ struct StoryCreationView: View {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.impactOccurred()
                             
-                            // Handle video capture
-                            viewModel.setSelectedVideo(videoURL)
+                            // Create strong reference and update view model
+                            localVideoRef = videoURL
                             viewModel.mediaType = .video
+                            viewModel.setSelectedVideo(videoURL)
                             
-                            // Show editing screen with preloading
-                            preloadMediaAndShowEditor()
+                            // Transition through states
+                            withAnimation {
+                                creationState = .preloading
+                                isPreloadingMedia = true
+                            }
+                            
+                            // Delay to show editor
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                withAnimation {
+                                    creationState = .editor
+                                    isPreloadingMedia = false
+                                    showEditor = true
+                                }
+                            }
                         }
                     )
-                } else if showEditor {
+                } else if creationState == .editor {
                     StoryEditorView(
                         viewModel: viewModel,
-                        isPresented: $showEditor,
+                        isPresented: $isPresented,
                         onShare: {
+                            print("📤 Share button pressed in editor")
                             Task {
                                 if await viewModel.uploadStory() {
-                                    // Close the story creation view on success
                                     isPresented = false
                                 }
                             }
                         },
                         onCancel: {
-                            showEditor = false
-                            viewModel.showCamera = true
+                            print("❌ Editor cancelled")
+                            withAnimation {
+                                creationState = .camera
+                                showEditor = false
+                            }
                         }
                     )
-                } else {
-                    // Placeholder view - should not be visible
-                    Color.black
                 }
             }
             
-            // Media preloading overlay if needed
+            // Preloading overlay
             if isPreloadingMedia {
-                ZStack {
-                    Color.black
-                        .edgesIgnoringSafeArea(.all)
-                        .opacity(0.7)
-                    
-                    VStack(spacing: 16) {
-                        LoadingSpinner(color: .white, lineWidth: 3, size: 40)
-                        Text("Preparing media...")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                    }
-                }
-                .transition(.opacity)
+                Color.black
+                    .overlay(
+                        VStack(spacing: 16) {
+                            LoadingSpinner(color: .white, lineWidth: 3, size: 40)
+                            Text("Preparing media...")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                        }
+                    )
             }
         }
-        .onChange(of: viewModel.selectedImage) { oldValue, newValue in
-            print("📐 selectedImage changed: \(newValue != nil ? "exists" : "nil")")
-        }
-        .onChange(of: viewModel.selectedVideo) { oldValue, newValue in
-            print("📐 selectedVideo changed: \(newValue != nil ? "exists" : "nil")")
-        }
-        .onAppear {
-            // Reset camera view on appear
-            viewModel.showCamera = true
-            showEditor = false
-        }
+        .edgesIgnoringSafeArea(.all)
     }
     
     // New method to handle media preloading before showing editor
     private func preloadMediaAndShowEditor() {
+        print("🔄 Starting media preload process")
+        print("📊 Current state:")
+        print("  • Media type: \(viewModel.mediaType)")
+        print("  • Selected image: \(viewModel.selectedImage != nil ? "exists" : "nil")")
+        print("  • Selected video: \(viewModel.selectedVideo != nil ? "exists" : "nil")")
+        print("  • Local video ref: \(localVideoRef != nil ? "exists" : "nil")")
+        print("  • Show camera: \(creationState == .camera)")
+        print("  • Show editor: \(creationState == .editor)")
+        
         // Show preloading overlay
         withAnimation {
-            isPreloadingMedia = true
+            creationState = .preloading
+            print("🔄 Preloading overlay shown")
         }
         
-        // Directly handle the media reference creation
-        if viewModel.mediaType == .image {
-            if let image = viewModel.selectedImage {
-                // Create local reference
+        // Ensure we're on the main thread for state updates
+        DispatchQueue.main.async {
+            if viewModel.mediaType == .video {
+                print("🎥 Handling video media type")
+                
+                // Check both view model and local reference
+                let videoRef = viewModel.selectedVideo ?? localVideoRef
+                
+                guard let video = videoRef else {
+                    print("❌ No valid video reference found")
+                    withAnimation {
+                        creationState = .camera
+                    }
+                    viewModel.errorMessage = "Failed to prepare video for editing"
+                    viewModel.showErrorMessage = true
+                    return
+                }
+                
+                print("✅ Valid video reference found: \(video)")
+                
+                // Ensure both references are set
+                localVideoRef = video
+                viewModel.setSelectedVideo(video)
+                
+                print("📊 Video references synchronized:")
+                print("  • Local ref exists: \(localVideoRef != nil)")
+                print("  • Selected video exists: \(viewModel.selectedVideo != nil)")
+                
+                // Use a slight delay to ensure UI updates are complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        // Update state in correct order
+                        creationState = .editor
+                        isPreloadingMedia = false
+                        showEditor = true
+                        
+                        print("📊 Final state after transition:")
+                        print("  • Show camera: \(creationState == .camera)")
+                        print("  • Show editor: \(creationState == .editor)")
+                        print("  • Is preloading: \(creationState == .preloading)")
+                    }
+                }
+            } else if viewModel.mediaType == .image {
+                print("📸 Handling image media type")
+                
+                // Check both view model and local reference
+                let imageRef = viewModel.selectedImage ?? localImageRef
+                
+                guard let image = imageRef else {
+                    print("❌ No valid image reference found")
+                    withAnimation {
+                        creationState = .camera
+                    }
+                    viewModel.errorMessage = "Failed to prepare image for editing"
+                    viewModel.showErrorMessage = true
+                    return
+                }
+                
+                print("✅ Valid image reference found")
+                
+                // Ensure both references are set
                 localImageRef = image
-                print("📥 Created local image reference before showing editor")
+                viewModel.setSelectedImage(image)
                 
-                // Show editor with a slight delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    withAnimation {
-                        viewModel.showCamera = false
+                print("📊 Image references synchronized:")
+                print("  • Local ref exists: \(localImageRef != nil)")
+                print("  • Selected image exists: \(viewModel.selectedImage != nil)")
+                
+                // Use a slight delay to ensure UI updates are complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        // Update state in correct order
+                        creationState = .editor
                         isPreloadingMedia = false
                         showEditor = true
+                        
+                        print("📊 Final state after transition:")
+                        print("  • Show camera: \(creationState == .camera)")
+                        print("  • Show editor: \(creationState == .editor)")
+                        print("  • Is preloading: \(creationState == .preloading)")
                     }
                 }
             } else {
-                // Failed to get image
+                print("❌ No media type selected")
                 withAnimation {
-                    isPreloadingMedia = false
+                    creationState = .camera
                 }
-                viewModel.errorMessage = "Failed to prepare image for editing"
+                viewModel.errorMessage = "No media selected for editing"
                 viewModel.showErrorMessage = true
             }
-        } else if viewModel.mediaType == .video {
-            if let videoURL = viewModel.selectedVideo {
-                // Create local reference
-                localVideoRef = videoURL
-                print("📥 Created local video reference before showing editor")
-                
-                // Show editor with a slight delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    withAnimation {
-                        viewModel.showCamera = false
-                        isPreloadingMedia = false
-                        showEditor = true
-                    }
-                }
-            } else {
-                // Failed to get video
-                withAnimation {
-                    isPreloadingMedia = false
-                }
-                viewModel.errorMessage = "Failed to prepare video for editing"
-                viewModel.showErrorMessage = true
-            }
-        } else {
-            // No media selected
-            withAnimation {
-                isPreloadingMedia = false
-            }
-            viewModel.errorMessage = "No media selected for editing"
-            viewModel.showErrorMessage = true
         }
     }
     
@@ -261,6 +352,19 @@ struct StoryCreationView: View {
             print("❌ Error searching cache: \(error.localizedDescription)")
             return nil
         }
+    }
+    
+    private var placeholderView: some View {
+        print("⚠️ No media to display in editor")
+        return VStack {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 40))
+                .foregroundColor(.yellow)
+            Text("Media not available")
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 }
 
@@ -743,8 +847,8 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
                 // Create delegate that will be retained until capture completes
                 let delegate = CameraPhotoCaptureDelegate { image in
                     guard let capturedImage = image else {
+                        print("❌ Photo capture failed, no image returned")
                         DispatchQueue.main.async {
-                            print("❌ Photo capture failed, no image returned")
                             completion(nil)
                         }
                         return
@@ -792,6 +896,8 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
                         }
                         
                         print("✅ Successfully verified image at: \(imageUrl.path)")
+                        
+                        // Ensure state updates happen on main thread in the correct order
                         DispatchQueue.main.async {
                             print("Photo capture completed, returning saved image")
                             completion(savedImage)
@@ -843,11 +949,39 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
             return
         }
         
-        print("📸 Video recording completed successfully at: \(outputFileURL.absoluteString)")
-        Task { @MainActor [weak self] in
-            guard let self = self, !self.isBeingDeallocated else { return }
-            self.videoCompletionHandler?(outputFileURL)
-            self.videoCompletionHandler = nil
+        // Create a copy in the StoryMedia directory for persistence
+        do {
+            let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            let mediaDirectory = cacheDirectory.appendingPathComponent("StoryMedia", isDirectory: true)
+            
+            // Create directory if it doesn't exist
+            if !fileManager.fileExists(atPath: mediaDirectory.path) {
+                try fileManager.createDirectory(at: mediaDirectory, withIntermediateDirectories: true, attributes: nil)
+            }
+            
+            let fileName = "\(Date().timeIntervalSince1970)_\(UUID().uuidString).mov"
+            let persistentURL = mediaDirectory.appendingPathComponent(fileName)
+            
+            // Copy the file
+            try fileManager.copyItem(at: outputFileURL, to: persistentURL)
+            print("📸 Copied video to persistent storage: \(persistentURL.path)")
+            
+            // Use the persistent URL for the completion handler
+            print("📸 Video recording completed successfully at: \(persistentURL.absoluteString)")
+            Task { @MainActor [weak self] in
+                guard let self = self, !self.isBeingDeallocated else { return }
+                self.videoCompletionHandler?(persistentURL)
+                self.videoCompletionHandler = nil
+            }
+        } catch {
+            print("❌ Error copying video to persistent storage: \(error.localizedDescription)")
+            // Fall back to original URL if copy fails
+            print("📸 Falling back to original video URL: \(outputFileURL.absoluteString)")
+            Task { @MainActor [weak self] in
+                guard let self = self, !self.isBeingDeallocated else { return }
+                self.videoCompletionHandler?(outputFileURL)
+                self.videoCompletionHandler = nil
+            }
         }
     }
     
@@ -1122,7 +1256,7 @@ struct StoryEditorView: View {
                     topNavigationBar(geometry: geometry)
                     
                     // Instagram-style editing tools - extracted to a separate view
-                    if showTopEditTools && (viewModel.selectedImage != nil || viewModel.selectedVideo != nil) {
+                    if showTopEditTools && (viewModel.selectedImage != nil || viewModel.selectedVideo != nil || localImageRef != nil || localVideoRef != nil) {
                         editingToolsBar
                         
                         // Add filter/adjust controls if those tools are selected
@@ -1148,6 +1282,12 @@ struct StoryEditorView: View {
                         // Sticker toolbar
                         stickerToolbar
                             .padding(.bottom, geometry.safeAreaInsets.bottom + 8)
+                    } else {
+                        // Always show basic controls for videos to keep toolbar visible
+                        if viewModel.mediaType == .video {
+                            videoControlsToolbar
+                                .padding(.bottom, geometry.safeAreaInsets.bottom + 8)
+                        }
                     }
                 }
                 .edgesIgnoringSafeArea(.top)
@@ -1167,42 +1307,53 @@ struct StoryEditorView: View {
                 print("📊 Media Status on Appear:")
                 print("  ➡️ viewModel.selectedImage: \(viewModel.selectedImage != nil ? "exists" : "nil")")
                 print("  ➡️ viewModel.selectedVideo: \(viewModel.selectedVideo != nil ? "exists" : "nil")")
+                print("  ➡️ localImageRef: \(localImageRef != nil ? "exists" : "nil")")
+                print("  ➡️ localVideoRef: \(localVideoRef != nil ? "exists" : "nil")")
                 
-                // Verify media is preloaded
+                // Verify media is preloaded and ensure toolbar is visible initially
+                showTopEditTools = true
+                
                 if viewModel.selectedImage == nil && viewModel.selectedVideo == nil {
                     print("⚠️ Media not preloaded before showing editor")
-                    // Print message but continue
-                    print("⚠️ Could not recover media references")
+                    
+                    // Attempt recovery from local references
+                    if let image = localImageRef {
+                        print("🔄 Recovering from local image reference")
+                        viewModel.setSelectedImage(image)
+                    } else if let video = localVideoRef {
+                        print("🔄 Recovering from local video reference")
+                        viewModel.setSelectedVideo(video)
+                    } else {
+                        print("⚠️ Could not recover media references")
+                    }
                 }
                 
                 // Reset transform state
                 scale = 1.0
                 offset = .zero
                 
+                // Create local references if they don't exist but viewModel has media
+                if let image = viewModel.selectedImage, localImageRef == nil {
+                    localImageRef = image
+                    print("📥 Created local image reference from viewModel")
+                }
                 
-                // Ensure we have local references to media - redundant but kept for safety
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    if localImageRef == nil {
-                        localImageRef = viewModel.selectedImage
-                        if viewModel.selectedImage != nil {
-                            print("📥 Created local image reference on appear")
-                        }
-                    }
-                    
-                    if localVideoRef == nil {
-                        localVideoRef = viewModel.selectedVideo
-                        if viewModel.selectedVideo != nil {
-                            print("📥 Created local video reference on appear")
-                        }
-                    }
+                if let video = viewModel.selectedVideo, localVideoRef == nil {
+                    localVideoRef = video
+                    print("📥 Created local video reference from viewModel")
                 }
             }
             .onTapGesture {
-                // Only handle tap if not in editing mode
-                if selectedEditTool == .none {
-                    // Toggle visibility of top editing tools
+                // Only toggle toolbar if we're not in a specific editing mode
+                if selectedEditTool == .none && viewModel.mediaType == .image {
+                    // Toggle visibility of top editing tools only for images
                     withAnimation {
                         showTopEditTools.toggle()
+                    }
+                } else if viewModel.mediaType == .video {
+                    // For videos, always show toolbar
+                    withAnimation {
+                        showTopEditTools = true
                     }
                 }
             }
@@ -1682,23 +1833,266 @@ struct StoryEditorView: View {
     // Extract media content view to simplify body
     @ViewBuilder
     private func mediaContentView(geometry: GeometryProxy) -> some View {
-        Group {
-            if let image = viewModel.selectedImage ?? localImageRef {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(offset)
-                    .scaleEffect(scale)
-                    .clipped()
-            } else if let video = viewModel.selectedVideo ?? localVideoRef {
-                VideoPlayer(player: AVPlayer(url: video))
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: geometry.size.width, height: geometry.size.height)
-                    .offset(offset)
-                    .scaleEffect(scale)
-                    .clipped()
+        if let image = localImageRef ?? viewModel.selectedImage {
+            imageContentView(image: image, geometry: geometry)
+                .onAppear {
+                    print("📸 Image view appeared in editor")
+                    // If viewModel is missing the reference but we have a local one, restore it
+                    if viewModel.selectedImage == nil && localImageRef != nil {
+                        print("🔄 Restoring image reference to viewModel")
+                        viewModel.setSelectedImage(localImageRef)
+                    }
+                }
+        } else if let video = localVideoRef ?? viewModel.selectedVideo {
+            CustomVideoPlayerView(videoURL: video)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .offset(offset)
+                .scaleEffect(scale)
+                .clipped()
+                .onAppear {
+                    print("🎥 Video view appeared in editor")
+                    // If viewModel is missing the reference but we have a local one, restore it
+                    if viewModel.selectedVideo == nil && localVideoRef != nil {
+                        print("🔄 Restoring video reference to viewModel")
+                        viewModel.setSelectedVideo(localVideoRef)
+                    }
+                    // Ensure toolbar remains visible for video
+                    showTopEditTools = true
+                }
+        } else {
+            placeholderView()
+                .onAppear {
+                    print("⚠️ No media to display in editor")
+                    // Attempt one final recovery from disk cache
+                    Task {
+                        if let recovered = await attemptMediaRecovery() {
+                            if let image = recovered as? UIImage {
+                                print("✅ Recovered image from disk")
+                                localImageRef = image
+                                viewModel.setSelectedImage(image)
+                            } else if let videoUrl = recovered as? URL {
+                                print("✅ Recovered video from disk")
+                                localVideoRef = videoUrl
+                                viewModel.setSelectedVideo(videoUrl)
+                            }
+                        }
+                    }
+                }
+        }
+    }
+    
+    private func imageContentView(image: UIImage, geometry: GeometryProxy) -> some View {
+        print("📸 Displaying image in editor")
+        return Image(uiImage: image)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .offset(offset)
+            .scaleEffect(scale)
+            .clipped()
+    }
+    
+    // Add the missing placeholderView function
+    private func placeholderView() -> some View {
+        VStack {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 40))
+                .foregroundColor(.yellow)
+            Text("Media not available")
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+    }
+    
+    // MARK: - Video Player Implementation
+    
+    // Create a more robust video player using UIViewRepresentable
+    struct CustomVideoPlayerView: UIViewRepresentable {
+        let videoURL: URL
+        @State private var playerItem: AVPlayerItem?
+        @StateObject private static var playerManager = PlayerManager()
+        
+        // Get the player for this instance
+        private var player: AVPlayer {
+            Self.playerManager.getPlayer(for: videoURL)
+        }
+        
+        // Static accessor method to get a player for a URL
+        static func getPlayer(for url: URL) -> AVPlayer {
+            return playerManager.getPlayer(for: url)
+        }
+        
+        // Static method to play/pause a specific video
+        static func togglePlayback(for url: URL, play: Bool) {
+            let player = playerManager.getPlayer(for: url)
+            if play {
+                player.play()
+                print("🎬 Video playback resumed via static method")
+            } else {
+                player.pause()
+                print("🎬 Video playback paused via static method")
             }
+        }
+        
+        func makeUIView(context: Context) -> UIView {
+            print("🎬 Creating video player view for URL: \(videoURL.lastPathComponent)")
+            
+            // Create container view
+            let view = UIView(frame: .zero)
+            view.backgroundColor = .black
+            
+            // Create player layer
+            let playerLayer = AVPlayerLayer(player: player)
+            playerLayer.videoGravity = .resizeAspectFill
+            playerLayer.frame = view.bounds
+            view.layer.addSublayer(playerLayer)
+            
+            // Store layer in coordinator
+            context.coordinator.playerLayer = playerLayer
+            
+            // Configure player for looping
+            context.coordinator.setupPlayerForLooping()
+            
+            // Start playback (auto-play)
+            player.play()
+            print("🎬 Video playback started")
+            
+            return view
+        }
+        
+        func updateUIView(_ uiView: UIView, context: Context) {
+            // Update the player layer frame when the view size changes
+            if let playerLayer = context.coordinator.playerLayer {
+                playerLayer.frame = uiView.bounds
+            }
+        }
+        
+        func makeCoordinator() -> Coordinator {
+            Coordinator(self)
+        }
+        
+        class Coordinator: NSObject {
+            let parent: CustomVideoPlayerView
+            var playerLayer: AVPlayerLayer?
+            private var timeObserverToken: Any?
+            private var itemEndObserver: NSObjectProtocol?
+            
+            init(_ parent: CustomVideoPlayerView) {
+                self.parent = parent
+                super.init()
+            }
+            
+            func setupPlayerForLooping() {
+                // Remove any existing observers
+                removeObservers()
+                
+                // Set up new observer for looping
+                itemEndObserver = NotificationCenter.default.addObserver(
+                    forName: .AVPlayerItemDidPlayToEndTime,
+                    object: parent.player.currentItem,
+                    queue: .main
+                ) { [weak self] _ in
+                    // Restart playback from beginning when it reaches the end
+                    self?.parent.player.seek(to: .zero)
+                    self?.parent.player.play()
+                    print("🎬 Video reached end, looping from beginning")
+                }
+            }
+            
+            func removeObservers() {
+                // Remove time observer
+                if let timeObserverToken = timeObserverToken {
+                    parent.player.removeTimeObserver(timeObserverToken)
+                    self.timeObserverToken = nil
+                }
+                
+                // Remove end observer
+                if let itemEndObserver = itemEndObserver {
+                    NotificationCenter.default.removeObserver(itemEndObserver)
+                    self.itemEndObserver = nil
+                }
+            }
+            
+            deinit {
+                removeObservers()
+                print("🎬 Video player coordinator cleaned up")
+            }
+        }
+        
+        static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+            print("🎬 Cleaning up video player resources")
+            coordinator.removeObservers()
+            coordinator.playerLayer?.removeFromSuperlayer()
+        }
+    }
+    
+    // PlayerManager to handle shared player instances
+    class PlayerManager: ObservableObject {
+        private var players: [URL: AVPlayer] = [:]
+        
+        func getPlayer(for url: URL) -> AVPlayer {
+            if let existingPlayer = players[url] {
+                print("🎬 Using existing player for: \(url.lastPathComponent)")
+                return existingPlayer
+            } else {
+                print("🎬 Creating new player for: \(url.lastPathComponent)")
+                let player = AVPlayer(url: url)
+                players[url] = player
+                return player
+            }
+        }
+        
+        func pauseAllPlayers() {
+            for (_, player) in players {
+                player.pause()
+            }
+        }
+        
+        func cleanupPlayer(for url: URL) {
+            if let player = players[url] {
+                player.pause()
+                player.replaceCurrentItem(with: nil)
+                players.removeValue(forKey: url)
+            }
+        }
+    }
+    
+    // Track video playback state
+    @State private var isVideoPlaying: Bool = true
+    
+    // Video controls toolbar with play/pause functionality
+    private var videoControlsToolbar: some View {
+        HStack(spacing: 20) {
+            Spacer()
+            
+            // Play/Pause button
+            Button(action: {
+                toggleVideoPlayback()
+            }) {
+                Image(systemName: isVideoPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color.black.opacity(0.7)))
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.3))
+        .cornerRadius(12)
+    }
+    
+    // Toggle video playback
+    private func toggleVideoPlayback() {
+        if let videoURL = localVideoRef ?? viewModel.selectedVideo {
+            isVideoPlaying.toggle()
+            
+            // Use the static accessor instead of direct access to private property
+            CustomVideoPlayerView.togglePlayback(for: videoURL, play: isVideoPlaying)
         }
     }
     
@@ -1707,44 +2101,66 @@ struct StoryEditorView: View {
     private var textOverlaysView: some View {
         ZStack {
             ForEach(viewModel.textOverlays) { overlay in
-                TextOverlayView(
-                    overlay: overlay,
-                    isSelected: viewModel.selectedTextOverlay == overlay.id,
-                    isEditing: false, // Replace viewModel.isEditingText
-                    onTap: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            viewModel.selectedTextOverlay = overlay.id
-                            viewModel.shouldKeepEditing = true
-                        }
-                    },
-                    onDelete: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            viewModel.removeTextOverlay(id: overlay.id) // Fix the method call
-                        }
-                    },
-                    onMove: { newPosition in
-                        // Apply position update
-                        if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
-                            var updatedOverlay = overlay
-                            updatedOverlay.position = newPosition
-                            viewModel.textOverlays[index] = updatedOverlay
-                        }
-                    },
-                    onRotate: { angle in
-                        // Apply rotation update
-                        if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
-                            var updatedOverlay = overlay
-                            updatedOverlay.rotation = angle.degrees
-                            viewModel.textOverlays[index] = updatedOverlay
-                        }
-                    },
-                    onSelect: {
-                        viewModel.selectedTextOverlay = overlay.id
-                    },
-                    isEnabled: selectedEditTool == .text || (viewModel.editingMode == .text && selectedEditTool == .none)
-                )
-                .position(x: overlay.position.x, y: overlay.position.y)
+                createTextOverlayView(for: overlay)
+                    .position(x: overlay.position.x, y: overlay.position.y)
             }
+        }
+    }
+    
+    // Helper method to create a TextOverlayView for a specific overlay
+    private func createTextOverlayView(for overlay: TextOverlay) -> some View {
+        // Determine if this overlay is selected
+        let isSelected = viewModel.selectedTextOverlay == overlay.id
+        
+        // Determine if editing is enabled for this overlay
+        let isEditingEnabled = selectedEditTool == .text || 
+                               (viewModel.editingMode == .text && selectedEditTool == .none)
+        
+        return TextOverlayView(
+            overlay: overlay,
+            isSelected: isSelected,
+            isEditing: false, // Replace viewModel.isEditingText
+            onTap: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    viewModel.selectedTextOverlay = overlay.id
+                    viewModel.shouldKeepEditing = true
+                }
+            },
+            onDelete: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    viewModel.removeTextOverlay(id: overlay.id)
+                }
+            },
+            onMove: { newPosition in
+                updateOverlayPosition(overlay: overlay, newPosition: newPosition)
+            },
+            onRotate: { angle in
+                updateOverlayRotation(overlay: overlay, angle: angle)
+            },
+            onSelect: {
+                viewModel.selectedTextOverlay = overlay.id
+            },
+            isEnabled: isEditingEnabled
+        )
+    }
+    
+    // Helper method to update overlay position
+    private func updateOverlayPosition(overlay: TextOverlay, newPosition: CGPoint) {
+        // Apply position update
+        if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
+            var updatedOverlay = overlay
+            updatedOverlay.position = newPosition
+            viewModel.textOverlays[index] = updatedOverlay
+        }
+    }
+    
+    // Helper method to update overlay rotation
+    private func updateOverlayRotation(overlay: TextOverlay, angle: Angle) {
+        // Apply rotation update
+        if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
+            var updatedOverlay = overlay
+            updatedOverlay.rotation = angle.degrees
+            viewModel.textOverlays[index] = updatedOverlay
         }
     }
 }
@@ -1775,584 +2191,3 @@ struct FilterToolsView: View {
         .background(Color.black.opacity(0.2))
     }
 }
-
-// MARK: - Adjust Tools View
-struct AdjustToolsView: View {
-    let adjustments = ["Brightness", "Contrast", "Structure", "Warmth", "Saturation", "Color", "Fade", "Highlights", "Shadows", "Vignette", "Sharpen"]
-    @State private var sliderValue: Double = 0.0
-    @State private var selectedAdjustment: String = "Brightness"
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Adjustment selector
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 15) {
-                    ForEach(adjustments, id: \.self) { adjustment in
-                        Text(adjustment)
-                            .font(.system(size: 13))
-                            .foregroundColor(selectedAdjustment == adjustment ? .white : .white.opacity(0.7))
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(
-                                selectedAdjustment == adjustment ?
-                                    Color.white.opacity(0.2) :
-                                    Color.clear
-                            )
-                            .cornerRadius(8)
-                            .onTapGesture {
-                                selectedAdjustment = adjustment
-                            }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
-            
-            // Adjustment slider
-            HStack {
-                Text("-")
-                    .foregroundColor(.white)
-                
-                Slider(value: $sliderValue, in: -100...100, step: 1)
-                    .accentColor(.white)
-                
-                Text("+")
-                    .foregroundColor(.white)
-                
-                Text("\(Int(sliderValue))")
-                    .foregroundColor(.white)
-                    .frame(width: 40)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-        .background(Color.black.opacity(0.2))
-    }
-}
-
-// MARK: - Text Overlay Views
-
-struct TextOverlayView: View {
-    let overlay: TextOverlay
-    let isSelected: Bool
-    let isEditing: Bool
-    let onTap: () -> Void
-    let onDelete: () -> Void
-    let onMove: (CGPoint) -> Void
-    let onRotate: (Angle) -> Void
-    let onSelect: () -> Void
-    let isEnabled: Bool
-    
-    @State private var position: CGPoint
-    @State private var startRotation: Angle = .zero
-    @GestureState private var rotation: Angle = .zero
-    @GestureState private var isDragging: Bool = false
-    
-    init(overlay: TextOverlay, isSelected: Bool, isEditing: Bool, onTap: @escaping () -> Void, onDelete: @escaping () -> Void, onMove: @escaping (CGPoint) -> Void, onRotate: @escaping (Angle) -> Void, onSelect: @escaping () -> Void, isEnabled: Bool) {
-        self.overlay = overlay
-        self.isSelected = isSelected
-        self.isEditing = isEditing
-        self.onTap = onTap
-        self.onDelete = onDelete
-        self.onMove = onMove
-        self.onRotate = onRotate
-        self.onSelect = onSelect
-        self.isEnabled = isEnabled
-        self._position = State(initialValue: overlay.position)
-    }
-    
-    var body: some View {
-        ZStack {
-            // Extract complex text configuration into separate properties
-            textOverlayContent
-            
-            // Delete button when selected
-            if isSelected {
-                deleteButton
-            }
-        }
-    }
-    
-    // Extract text content to simplify the body
-    private var textOverlayContent: some View {
-        Text(overlay.text)
-            .font(getFont(name: overlay.fontName, size: overlay.fontSize))
-            .foregroundColor(overlay.color)
-            .fixedSize()
-            .padding(isSelected ? 8 : 0)
-            .background(selectionIndicator)
-            .rotationEffect(Angle(radians: Double(overlay.rotation)) + rotation)
-            .position(position)
-            .opacity(isEditing ? 0 : 1)
-            .modifier(GestureModifier(dragGesture: dragGesture, rotationGesture: rotationGesture))
-            .onTapGesture {
-                handleTap()
-            }
-    }
-    
-    // Extract background indicator for clarity
-    private var selectionIndicator: some View {
-        RoundedRectangle(cornerRadius: 3)
-            .stroke(isSelected ? Color.white : Color.clear, lineWidth: 1)
-            .background(Color.clear)
-    }
-    
-    // Extract delete button
-    private var deleteButton: some View {
-        VStack {
-            Button(action: onDelete) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
-            }
-            .offset(x: -50, y: -30)
-        }
-        .position(position)
-    }
-    
-    // Extract drag gesture using concrete type
-    private var dragGesture: _EndedGesture<_ChangedGesture<GestureStateGesture<DragGesture, Bool>>>? {
-        if isSelected {
-            return DragGesture(coordinateSpace: .named("container"))
-                .updating($isDragging) { _, state, _ in
-                    state = true
-                }
-                .onChanged { value in
-                    self.position = value.location
-                }
-                .onEnded { value in
-                    onMove(value.location)
-                }
-        } else {
-            return nil
-        }
-    }
-    
-    // Extract rotation gesture using concrete type
-    private var rotationGesture: _EndedGesture<GestureStateGesture<RotationGesture, Angle>>? {
-        if isSelected {
-            return RotationGesture()
-                .updating($rotation) { angle, state, _ in
-                    state = angle
-                }
-                .onEnded { angle in
-                    onRotate(angle)
-                }
-        } else {
-            return nil
-        }
-    }
-    
-    // Extract tap handler to simplify view
-    private func handleTap() {
-        if isSelected {
-            // Force state to update on main thread to prevent disappearing
-            DispatchQueue.main.async {
-                onTap()
-            }
-        }
-    }
-    
-    // Helper to convert font name to SwiftUI Font
-    private func getFont(name: String, size: CGFloat) -> Font {
-        switch name {
-        case "System Bold":
-            return .system(size: size, weight: .bold)
-        case "System Italic":
-            return .system(size: size, design: .serif).italic()
-        case "Helvetica":
-            return .custom("Helvetica", size: size)
-        case "Arial":
-            return .custom("Arial", size: size)
-        case "Georgia":
-            return .custom("Georgia", size: size)
-        default:
-            return .system(size: size)
-        }
-    }
-}
-
-struct TextEditorOverlay: View {
-    @Binding var text: String
-    let textColor: Color
-    let fontName: String
-    let fontSize: CGFloat
-    let getFont: (String, CGFloat) -> Font
-    let onDone: () -> Void
-    let onColorChange: (Color) -> Void
-    let onFontChange: (String) -> Void
-    let onSizeChange: (CGFloat) -> Void
-    let availableFonts: [String]
-    let availableFontSizes: [CGFloat]
-    
-    @State private var selectedColor: Color
-    
-    init(text: Binding<String>, textColor: Color, fontName: String, fontSize: CGFloat, getFont: @escaping (String, CGFloat) -> Font, onDone: @escaping () -> Void, onColorChange: @escaping (Color) -> Void, onFontChange: @escaping (String) -> Void, onSizeChange: @escaping (CGFloat) -> Void, availableFonts: [String], availableFontSizes: [CGFloat]) {
-        self._text = text
-        self.textColor = textColor
-        self.fontName = fontName
-        self.fontSize = fontSize
-        self.getFont = getFont
-        self.onDone = onDone
-        self.onColorChange = onColorChange
-        self.onFontChange = onFontChange
-        self.onSizeChange = onSizeChange
-        self._selectedColor = State(initialValue: textColor)
-        self.availableFonts = availableFonts
-        self.availableFontSizes = availableFontSizes
-    }
-    
-    var body: some View {
-        ZStack {
-            // Dimmed background
-            Color.black.opacity(0.7)
-                .edgesIgnoringSafeArea(.all)
-                .onTapGesture {
-                    onDone()
-                }
-            
-            // Editor panel
-            editorPanelView
-        }
-    }
-    
-    private var editorPanelView: some View {
-        VStack(spacing: 20) {
-            // Text field
-            textFieldView
-            
-            // Font selection
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 15) {
-                    ForEach(availableFonts, id: \.self) { name in
-                        Text("Aa")
-                            .font(getFont(name, fontSize))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(fontName == name ? Color.blue.opacity(0.5) : Color.gray.opacity(0.3))
-                            )
-                        .onTapGesture {
-                            onFontChange(name)
-                        }
-                    }
-                }
-            }
-            
-            // Font size selection
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 15) {
-                    ForEach(availableFontSizes, id: \.self) { size in
-                        Text("\(Int(size))")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(fontSize == size ? Color.blue.opacity(0.5) : Color.gray.opacity(0.3))
-                            )
-                        .onTapGesture {
-                            onSizeChange(size)
-                        }
-                    }
-                }
-            }
-            
-            // Color selection
-            colorSelectionView
-            
-            // Done button
-            doneButtonView
-        }
-        .padding(24)
-        .background(Color(UIColor.systemGray6).opacity(0.9))
-        .cornerRadius(16)
-        .padding(.horizontal, 20)
-    }
-    
-    private var textFieldView: some View {
-        TextField("Enter text", text: $text)
-            .font(getFont(fontName, fontSize))
-            .foregroundColor(selectedColor)
-            .multilineTextAlignment(.center)
-            .padding()
-            .background(Color.black.opacity(0.5))
-            .cornerRadius(12)
-    }
-    
-    private var colorSelectionView: some View {
-        HStack(spacing: 16) {
-            ForEach(colorOptions, id: \.self) { color in
-                colorCircleView(for: color)
-            }
-        }
-    }
-    
-    private func colorCircleView(for color: Color) -> some View {
-        Circle()
-            .fill(color)
-            .frame(width: 30, height: 30)
-            .overlay(
-                Circle()
-                    .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 2)
-            )
-            .onTapGesture {
-                selectedColor = color
-                onColorChange(color)
-            }
-    }
-    
-    private var doneButtonView: some View {
-        Button(action: onDone) {
-            Text("Done")
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 30)
-                .padding(.vertical, 10)
-                .background(Color.blue)
-                .cornerRadius(20)
-        }
-        .padding(.top, 10)
-    }
-    
-    private var colorOptions: [Color] {
-        [.white, .yellow, .red, .blue, .green, .purple, .orange]
-    }
-}
-
-// MARK: - Location Picker View
-struct LocationPickerView: View {
-    @Environment(\.presentationMode) var presentationMode
-    @StateObject private var locationManager = LocationManager()
-    @State private var searchText = ""
-    @State private var locations: [LocationResult] = []
-    @State private var isSearching = false
-    var onSelectLocation: (CLLocationCoordinate2D, String) -> Void
-    
-    var body: some View {
-        ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
-            
-            VStack {
-                // Custom navigation bar
-                HStack {
-                    Text("Add Location")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
-                .padding()
-                .background(Color.black.opacity(0.8))
-                
-                // Search bar
-                TextField("Search location", text: $searchText)
-                    .padding()
-                    .background(Color.white.opacity(0.1))
-                    .cornerRadius(10)
-                    .foregroundColor(.white)
-                    .padding(.horizontal)
-                    .onSubmit {
-                        searchLocations()
-                    }
-                
-                if isSearching {
-                    ProgressView()
-                        .tint(.white)
-                        .padding()
-                } else if !locations.isEmpty {
-                    // Location results
-                    List {
-                        ForEach(locations) { location in
-                            Button(action: {
-                                onSelectLocation(location.coordinate, location.name)
-                                presentationMode.wrappedValue.dismiss()
-                            }) {
-                                HStack {
-                                    Image(systemName: "mappin.circle.fill")
-                                        .foregroundColor(.blue)
-                                    
-                                    VStack(alignment: .leading) {
-                                        Text(location.name)
-                                            .foregroundColor(.white)
-                                        
-                                        if let subtitle = location.subtitle {
-                                            Text(subtitle)
-                                                .font(.caption)
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                    .listStyle(PlainListStyle())
-                } else {
-                    // Current location button
-                    Button(action: {
-                        if let location = locationManager.location {
-                            onSelectLocation(location.coordinate, "Current Location")
-                            presentationMode.wrappedValue.dismiss()
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "location.fill")
-                                .foregroundColor(.blue)
-                            
-                            Text("Use Current Location")
-                                .foregroundColor(.white)
-                        }
-                        .padding()
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(10)
-                    }
-                    .padding()
-                    .disabled(locationManager.location == nil)
-                    .opacity(locationManager.location == nil ? 0.5 : 1.0)
-                    
-                    Spacer()
-                }
-            }
-        }
-        .edgesIgnoringSafeArea(.all)
-        .statusBar(hidden: true)
-        .onAppear {
-            locationManager.requestLocation()
-        }
-    }
-    
-    private func searchLocations() {
-        guard !searchText.isEmpty else { return }
-        
-        isSearching = true
-        locations = []
-        
-        let geocoder = CLGeocoder()
-        geocoder.geocodeAddressString(searchText) { placemarks, error in
-            isSearching = false
-            
-            if let error = error {
-                print("Geocoding error: \(error)")
-                return
-            }
-            
-            guard let placemarks = placemarks else { return }
-            
-            locations = placemarks.compactMap { placemark in
-                guard let name = placemark.name,
-                      let location = placemark.location else {
-                    return nil
-                }
-                
-                var subtitle: String?
-                if let locality = placemark.locality, let country = placemark.country {
-                    subtitle = "\(locality), \(country)"
-                } else if let country = placemark.country {
-                    subtitle = country
-                }
-                
-                return LocationResult(
-                    id: UUID(),
-                    name: name,
-                    subtitle: subtitle,
-                    coordinate: location.coordinate
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Previews
-struct StoryCreationView_Previews: PreviewProvider {
-    static var previews: some View {
-        StoryCreationView(viewModel: StoryCreationViewModel(storiesViewModel: StoriesViewModel()), isPresented: .constant(true))
-    }
-}
-
-// MARK: - Gesture Helpers
-// A completely different component-based approach to gesture handling
-
-// Protocol for gesture application behavior
-protocol GestureApplicator {
-    associatedtype Content: View
-    associatedtype Result: View
-    func apply(to content: Content) -> Result
-}
-
-// Concrete implementation for no gestures
-struct NoGestureApplicator<Content: View>: GestureApplicator {
-    func apply(to content: Content) -> Content {
-        content
-    }
-}
-
-// Concrete implementation for single drag gesture
-struct DragGestureApplicator<Content: View>: GestureApplicator {
-    let gesture: DragGesture
-    
-    func apply(to content: Content) -> some View {
-        content.gesture(gesture)
-    }
-}
-
-// Concrete implementation for single rotation gesture
-struct RotationGestureApplicator<Content: View>: GestureApplicator {
-    let gesture: RotationGesture
-    
-    func apply(to content: Content) -> some View {
-        content.gesture(gesture)
-    }
-}
-
-// Concrete implementation for both gestures
-struct CombinedGestureApplicator<Content: View>: GestureApplicator {
-    let dragGesture: DragGesture
-    let rotationGesture: RotationGesture
-    
-    func apply(to content: Content) -> some View {
-        content
-            .simultaneousGesture(dragGesture)
-            .simultaneousGesture(rotationGesture)
-    }
-}
-
-// Type-erasing modifier that selects the appropriate applicator
-struct GestureModifier: ViewModifier {
-    // Store concrete typed gestures instead of type-erased ones
-    private var dragGesture: DragGesture?
-    private var rotationGesture: RotationGesture?
-    
-    // Public initializer takes the original types for compatibility
-    init(dragGesture: (any Gesture)?, rotationGesture: (any Gesture)?) {
-        // Cast to concrete types if possible, otherwise nil
-        self.dragGesture = dragGesture as? DragGesture
-        self.rotationGesture = rotationGesture as? RotationGesture
-    }
-    
-    func body(content: Content) -> some View {
-        // Choose the right concrete applicator based on available gestures
-        if let drag = dragGesture, let rotation = rotationGesture {
-            CombinedGestureApplicator(dragGesture: drag, rotationGesture: rotation)
-                .apply(to: content)
-        } else if let drag = dragGesture {
-            DragGestureApplicator(gesture: drag)
-                .apply(to: content)
-        } else if let rotation = rotationGesture {
-            RotationGestureApplicator(gesture: rotation)
-                .apply(to: content)
-        } else {
-            NoGestureApplicator()
-                .apply(to: content)
-        }
-    }
-}
-

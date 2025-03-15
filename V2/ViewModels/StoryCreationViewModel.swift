@@ -536,20 +536,23 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     
     // Override selectedImage setter to update cache
     func setSelectedImage(_ image: UIImage?) {
-        // Use a small buffer to ensure the reference is properly established
+        // Use a longer buffer and ensure proper synchronization
         if let img = image {
-            // Create a strong local reference immediately
+            // Create strong local reference immediately
             self.imageCache = img
             
-            // Use a small buffer to set the published property
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.selectedImage = img
-                print("📥 StoryCreationViewModel: Image reference cached and published with buffer")
-                
-                // If setting an image, clear any video reference
-                self.selectedVideo = nil
-                self.videoCache = nil
-            }
+            // Direct assignment without delay to avoid race conditions
+            self.selectedImage = img
+            
+            // Log the update
+            print("📥 StoryCreationViewModel: Image reference cached and published")
+            
+            // If setting an image, clear any video reference
+            self.selectedVideo = nil
+            self.videoCache = nil
+            
+            // Set media preload flag
+            self.isMediaPreloaded = true
         } else {
             self.selectedImage = nil
             self.imageCache = nil
@@ -558,20 +561,20 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     
     // Override selectedVideo setter to update cache
     func setSelectedVideo(_ url: URL?) {
-        // Use a small buffer to ensure the reference is properly established
         if let videoURL = url {
             // Create a strong local reference immediately
             self.videoCache = videoURL
             
-            // Use a small buffer to set the published property
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.selectedVideo = videoURL
-                print("📥 StoryCreationViewModel: Video reference cached and published with buffer")
-                
-                // If setting a video, clear any image reference
-                self.selectedImage = nil
-                self.imageCache = nil
-            }
+            // Direct assignment without delay to avoid race conditions
+            self.selectedVideo = videoURL
+            print("📥 StoryCreationViewModel: Video reference cached and published")
+            
+            // If setting a video, clear any image reference
+            self.selectedImage = nil
+            self.imageCache = nil
+            
+            // Set media preload flag
+            self.isMediaPreloaded = true
         } else {
             self.selectedVideo = nil
             self.videoCache = nil
@@ -582,7 +585,18 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     func restoreMediaReferences() {
         if selectedImage == nil && imageCache != nil {
             print("🔄 StoryCreationViewModel: Restoring image from cache")
-            selectedImage = imageCache
+            // Use dispatch group for synchronization
+            let group = DispatchGroup()
+            group.enter()
+            
+            DispatchQueue.main.async {
+                self.selectedImage = self.imageCache
+                group.leave()
+            }
+            
+            group.notify(queue: .main) {
+                print("✅ Image reference restored: \(self.selectedImage != nil)")
+            }
         }
         
         if selectedVideo == nil && videoCache != nil {

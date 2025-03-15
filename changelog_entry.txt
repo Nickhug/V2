@@ -7,3 +7,32 @@
 - Improved error handling in camera components to prevent build failures
 - Reference: StoryCreationView.swift, CameraComponents.swift
 
+# Version 1.0.17 (2025-03-15)
+
+## [REFACTOR] Improved Project Structure for Story Creation Components
+- Removed duplicate StoryCreationView.swift file from Views/Feed directory
+- Created a proper TextEditorOverlay.swift component in V2/Views/Feed/Components
+- Enhanced TextEditorOverlay with additional font and size selection functionality
+- Fixed potential issues with component references in StoryCreationView
+- Improved code organization by properly separating UI components
+- Reference: V2/Views/Feed/Components/TextEditorOverlay.swift, V2/Views/Feed/StoryCreationView.swift
+
+## [FIX] Swift Compiler Performance Issues in Story Components
+- Fixed "The compiler is unable to type-check this expression in reasonable time" errors
+- Refactored TextEditorOverlay to use extracted subviews and computed properties
+- Created missing AdjustToolsView component in V2/Views/Feed/Components
+- Created missing TextOverlayView component in V2/Views/Feed/Components
+- Extracted complex expressions in StoryCreationView into helper methods
+- Improved TextOverlayView implementation with better gesture handling
+- Optimized view structures for better compiler performance throughout
+- Reference: V2/Views/Feed/Components/TextEditorOverlay.swift, V2/Views/Feed/Components/AdjustToolsView.swift, V2/Views/Feed/Components/TextOverlayView.swift, V2/Views/Feed/StoryCreationView.swift
+
+## [FIX] Swift Compiler Type Resolution in TextOverlayView
+- Resolved "Invalid redeclaration of 'TextOverlay'" error by removing duplicate model definition
+- Fixed ambiguous type lookup errors by properly referencing the existing TextOverlay model
+- Addressed "Generic parameter could not be inferred" errors in TextOverlayView
+- Corrected rotation type casting for proper compatibility with the TextOverlay model
+- Ensured proper type resolution for TextOverlay properties throughout the component
+- Enhanced code stability through consistent model usage across the codebase
+- Reference: V2/Views/Feed/Components/TextOverlayView.swift, V2/ViewModels/StoryCreationViewModel.swift
+
