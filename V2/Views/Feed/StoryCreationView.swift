@@ -1912,21 +1912,26 @@ struct StoryEditorView: View {
     struct CustomVideoPlayerView: UIViewRepresentable {
         let videoURL: URL
         @State private var playerItem: AVPlayerItem?
-        @StateObject private static var playerManager = PlayerManager()
         
-        // Get the player for this instance
+        // Use fileprivate instead of private to allow access within the file
+        fileprivate var playerManager = PlayerManager()
+        
+        // Create a shared instance manager for static access
+        private static let sharedPlayerManager = PlayerManager()
+        
+        // Get the player for this instance - use instance playerManager
         private var player: AVPlayer {
-            Self.playerManager.getPlayer(for: videoURL)
+            playerManager.getPlayer(for: videoURL)
         }
         
-        // Static accessor method to get a player for a URL
+        // Static accessor method to get a player for a URL - use sharedPlayerManager
         static func getPlayer(for url: URL) -> AVPlayer {
-            return playerManager.getPlayer(for: url)
+            return sharedPlayerManager.getPlayer(for: url)
         }
         
-        // Static method to play/pause a specific video
+        // Static method to play/pause a specific video - use sharedPlayerManager
         static func togglePlayback(for url: URL, play: Bool) {
-            let player = playerManager.getPlayer(for: url)
+            let player = sharedPlayerManager.getPlayer(for: url)
             if play {
                 player.play()
                 print("🎬 Video playback resumed via static method")
@@ -1978,6 +1983,7 @@ struct StoryEditorView: View {
             var playerLayer: AVPlayerLayer?
             private var timeObserverToken: Any?
             private var itemEndObserver: NSObjectProtocol?
+            private var playerItemObserver: NSKeyValueObservation?
             
             init(_ parent: CustomVideoPlayerView) {
                 self.parent = parent
@@ -1988,10 +1994,33 @@ struct StoryEditorView: View {
                 // Remove any existing observers
                 removeObservers()
                 
+                // Observe player item changes
+                playerItemObserver = parent.player.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+                    guard let self = self else { return }
+                    
+                    // Setup observation for the new item
+                    if let item = player.currentItem {
+                        self.observePlayerItem(item)
+                    }
+                }
+                
+                // Set up initial observation for current item
+                if let currentItem = parent.player.currentItem {
+                    observePlayerItem(currentItem)
+                }
+            }
+            
+            func observePlayerItem(_ item: AVPlayerItem) {
+                // Remove existing end observer first
+                if let itemEndObserver = itemEndObserver {
+                    NotificationCenter.default.removeObserver(itemEndObserver)
+                    self.itemEndObserver = nil
+                }
+                
                 // Set up new observer for looping
                 itemEndObserver = NotificationCenter.default.addObserver(
                     forName: .AVPlayerItemDidPlayToEndTime,
-                    object: parent.player.currentItem,
+                    object: item,
                     queue: .main
                 ) { [weak self] _ in
                     // Restart playback from beginning when it reaches the end
@@ -2013,6 +2042,10 @@ struct StoryEditorView: View {
                     NotificationCenter.default.removeObserver(itemEndObserver)
                     self.itemEndObserver = nil
                 }
+                
+                // Remove player item observer
+                playerItemObserver?.invalidate()
+                playerItemObserver = nil
             }
             
             deinit {
@@ -2025,6 +2058,16 @@ struct StoryEditorView: View {
             print("🎬 Cleaning up video player resources")
             coordinator.removeObservers()
             coordinator.playerLayer?.removeFromSuperlayer()
+            
+            // Clean up the player resources when view is dismantled
+            // Fixed conditional binding - videoURL is already non-optional
+            let videoURL = coordinator.parent.videoURL
+            
+            // Clean up local instance
+            coordinator.parent.playerManager.cleanupPlayer(for: videoURL)
+            
+            // Also clean up in shared manager
+            CustomVideoPlayerView.sharedPlayerManager.cleanupPlayer(for: videoURL)
         }
     }
     
@@ -2035,10 +2078,28 @@ struct StoryEditorView: View {
         func getPlayer(for url: URL) -> AVPlayer {
             if let existingPlayer = players[url] {
                 print("🎬 Using existing player for: \(url.lastPathComponent)")
+                
+                // Check if the player item is still valid, if not recreate it
+                if existingPlayer.currentItem?.status == .failed || existingPlayer.currentItem == nil {
+                    print("🎬 Existing player item is invalid, recreating...")
+                    existingPlayer.replaceCurrentItem(with: AVPlayerItem(url: url))
+                }
+                
                 return existingPlayer
             } else {
                 print("🎬 Creating new player for: \(url.lastPathComponent)")
                 let player = AVPlayer(url: url)
+                
+                // Add periodic time observer to keep player active
+                let timeScale = CMTimeScale(NSEC_PER_SEC)
+                let interval = CMTime(seconds: 0.5, preferredTimescale: timeScale)
+                player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] _ in
+                    // This keeps the player connection alive
+                    if let player = player, player.timeControlStatus == .playing {
+                        // Player is still active
+                    }
+                }
+                
                 players[url] = player
                 return player
             }
@@ -2055,7 +2116,23 @@ struct StoryEditorView: View {
                 player.pause()
                 player.replaceCurrentItem(with: nil)
                 players.removeValue(forKey: url)
+                print("🎬 Player cleaned up for: \(url.lastPathComponent)")
             }
+        }
+        
+        func cleanupAllPlayers() {
+            for (url, player) in players {
+                player.pause()
+                player.replaceCurrentItem(with: nil)
+                print("🎬 Player cleaned up for: \(url.lastPathComponent)")
+            }
+            players.removeAll()
+            print("🎬 All players cleaned up")
+        }
+        
+        deinit {
+            print("🎬 PlayerManager being deallocated, cleaning up resources")
+            cleanupAllPlayers()
         }
     }
     

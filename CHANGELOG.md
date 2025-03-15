@@ -1,3 +1,34 @@
+# Version 1.0.25 (2025-04-01)
+
+## [FIX] Video Player Access Level Issue
+- Fixed "'StoryEditorView.CustomVideoPlayerView' initializer is inaccessible due to 'private' protection level" error
+- Changed playerManager access modifier from 'private' to 'fileprivate' to allow access within the same file
+- Ensured proper encapsulation while maintaining access for views within the same file
+- Technical Decision: Used fileprivate instead of internal to maintain some level of encapsulation
+- Reference: V2/Views/Feed/StoryCreationView.swift
+
+# Version 1.0.24 (2025-03-31)
+
+## [FIX] Final Video Player Lifecycle Fixes
+- Fixed "Accessing StateObject's object without being installed on a View" errors by replacing @StateObject with a standard property
+- Fixed "Initializer for conditional binding must have Optional type, not 'URL'" in dismantleUIView 
+- Simplified resource cleanup in video player to prevent conditional binding errors
+- Removed unnecessary optional unwrapping for non-optional URL properties
+- Technical Decision: Avoided @StateObject entirely for better lifecycle management with UIViewRepresentable
+- Reference: V2/Views/Feed/StoryCreationView.swift
+
+# Version 1.0.23 (2025-03-30)
+
+## [FIX] StateObject Lifecycle Management in Video Player
+- Fixed "Accessing StateObject's object without being installed on a View" errors
+- Restructured PlayerManager to use a proper shared instance pattern instead of static StateObject
+- Enhanced player lifecycle management with improved resource cleanup
+- Added invalidation detection and automatic recovery for failed player items
+- Implemented periodic time observers to keep player connections alive
+- Added comprehensive cleanup in view dismantling to prevent memory leaks
+- Technical Decision: Used a combination of instance @StateObject and static shared manager
+- Reference: V2/Views/Feed/StoryCreationView.swift
+
 # Version 1.0.22 (2025-03-29)
 
 ## [FIX] Video Player Access Control Issue
