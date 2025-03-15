@@ -411,6 +411,27 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
     @Published var cameraPermissionGranted = false
     @Published var cameraSetupProgress: Double = 0 // Track setup progress
     
+    // Zoom properties
+    @Published var currentZoomFactor: CGFloat = 1.0
+    @Published var zoomOptions: [ZoomOption] = [
+        ZoomOption(factor: 0.5, name: "0.5x"),
+        ZoomOption(factor: 1.0, name: "1x", isDefault: true),
+        ZoomOption(factor: 2.0, name: "2x"),
+        ZoomOption(factor: 3.0, name: "3x")
+    ]
+    
+    // Define zoom option model
+    struct ZoomOption: Identifiable, Equatable {
+        let id = UUID()
+        let factor: CGFloat
+        let name: String
+        var isDefault: Bool = false
+        
+        static func == (lhs: ZoomOption, rhs: ZoomOption) -> Bool {
+            return lhs.id == rhs.id
+        }
+    }
+    
     var session = AVCaptureSession()
     var photoOutput = AVCapturePhotoOutput()
     var videoOutput = AVCaptureMovieFileOutput()
@@ -634,6 +655,9 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
                 // Update progress
                 self.cameraSetupProgress = 0.9 // Configuration complete
                 
+                // Initialize zoom to default
+                self.resetZoom()
+                
                 self.session.commitConfiguration()
                 print("📸 Camera configuration committed")
                 
@@ -770,6 +794,9 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
                 }
                 
                 self.session.commitConfiguration()
+                
+                // Reset zoom when switching cameras
+                self.resetZoom()
             }
         }
     }
@@ -1061,6 +1088,54 @@ final class CameraViewModel: NSObject, ObservableObject, AVCaptureFileOutputReco
                 self.videoOutput.stopRecording()
                 self.isRecording = false
             }
+        }
+    }
+    
+    // MARK: - Zoom Methods
+    
+    func setZoom(factor: CGFloat) {
+        guard let device = currentDevice, !isBeingDeallocated else { return }
+        
+        Task.detached { [weak self] in
+            await MainActor.run { [weak self] in
+                guard let self = self, !self.isBeingDeallocated else { return }
+                
+                // Ensure zoom factors less than 1.0 work properly
+                // Some devices may not support factors below 1.0
+                let actualFactor: CGFloat
+                if factor < 1.0 {
+                    // For wide-angle (.5x) use the actual ultrawide camera if available
+                    // or emulate it with regular camera at 1.0
+                    actualFactor = max(factor, device.minAvailableVideoZoomFactor)
+                } else {
+                    let maxZoom = min(device.maxAvailableVideoZoomFactor, 10.0) // Cap at 10x for stability
+                    actualFactor = min(factor, maxZoom)
+                }
+                
+                do {
+                    try device.lockForConfiguration()
+                    device.videoZoomFactor = actualFactor
+                    device.unlockForConfiguration()
+                    
+                    self.currentZoomFactor = factor // Store the requested factor, not the actual one
+                    print("📸 Set camera zoom to \(factor)x (actual zoom factor: \(actualFactor)x)")
+                } catch {
+                    print("❌ Failed to set zoom: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    func selectZoomOption(_ option: ZoomOption) {
+        setZoom(factor: option.factor)
+    }
+    
+    func resetZoom() {
+        // Find the default zoom option (usually 1x)
+        if let defaultOption = zoomOptions.first(where: { $0.isDefault }) {
+            setZoom(factor: defaultOption.factor)
+        } else {
+            setZoom(factor: 1.0)
         }
     }
 }
@@ -1844,22 +1919,22 @@ struct StoryEditorView: View {
                     }
                 }
         } else if let video = localVideoRef ?? viewModel.selectedVideo {
-            CustomVideoPlayerView(videoURL: video)
-                .aspectRatio(contentMode: .fill)
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .offset(offset)
-                .scaleEffect(scale)
-                .clipped()
-                .onAppear {
-                    print("🎥 Video view appeared in editor")
-                    // If viewModel is missing the reference but we have a local one, restore it
-                    if viewModel.selectedVideo == nil && localVideoRef != nil {
-                        print("🔄 Restoring video reference to viewModel")
-                        viewModel.setSelectedVideo(localVideoRef)
+            GeometryReader { geo in
+                CustomVideoPlayerView(videoURL: video)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .offset(offset)
+                    .scaleEffect(scale)
+                    .onAppear {
+                        print("🎥 Video view appeared in editor")
+                        // If viewModel is missing the reference but we have a local one, restore it
+                        if viewModel.selectedVideo == nil && localVideoRef != nil {
+                            print("🔄 Restoring video reference to viewModel")
+                            viewModel.setSelectedVideo(localVideoRef)
+                        }
+                        // Ensure toolbar remains visible for video
+                        showTopEditTools = true
                     }
-                    // Ensure toolbar remains visible for video
-                    showTopEditTools = true
-                }
+            }
         } else {
             placeholderView()
                 .onAppear {
@@ -1913,25 +1988,22 @@ struct StoryEditorView: View {
         let videoURL: URL
         @State private var playerItem: AVPlayerItem?
         
-        // Use fileprivate instead of private to allow access within the file
-        fileprivate var playerManager = PlayerManager()
+        // Use the shared PlayerManager instead of creating a new instance
+        // Remove the individual playerManager instance and sharedPlayerManager
         
-        // Create a shared instance manager for static access
-        private static let sharedPlayerManager = PlayerManager()
-        
-        // Get the player for this instance - use instance playerManager
+        // Get the player using the shared instance
         private var player: AVPlayer {
-            playerManager.getPlayer(for: videoURL)
+            PlayerManager.shared.getPlayer(for: videoURL)
         }
         
-        // Static accessor method to get a player for a URL - use sharedPlayerManager
+        // Static accessor method to get a player for a URL
         static func getPlayer(for url: URL) -> AVPlayer {
-            return sharedPlayerManager.getPlayer(for: url)
+            return PlayerManager.shared.getPlayer(for: url)
         }
         
-        // Static method to play/pause a specific video - use sharedPlayerManager
+        // Static method to play/pause a specific video
         static func togglePlayback(for url: URL, play: Bool) {
-            let player = sharedPlayerManager.getPlayer(for: url)
+            let player = PlayerManager.shared.getPlayer(for: url)
             if play {
                 player.play()
                 print("🎬 Video playback resumed via static method")
@@ -1944,33 +2016,52 @@ struct StoryEditorView: View {
         func makeUIView(context: Context) -> UIView {
             print("🎬 Creating video player view for URL: \(videoURL.lastPathComponent)")
             
-            // Create container view
-            let view = UIView(frame: .zero)
-            view.backgroundColor = .black
+            // Create container view with explicit frame
+            let containerView = UIView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+            containerView.backgroundColor = .black
+            containerView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             
-            // Create player layer
-            let playerLayer = AVPlayerLayer(player: player)
-            playerLayer.videoGravity = .resizeAspectFill
-            playerLayer.frame = view.bounds
-            view.layer.addSublayer(playerLayer)
+            // Try a different approach - create AVPlayerViewController instead of using layer directly
+            let playerViewController = AVPlayerViewController()
+            playerViewController.view.frame = containerView.bounds
+            playerViewController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            playerViewController.showsPlaybackControls = false
             
-            // Store layer in coordinator
-            context.coordinator.playerLayer = playerLayer
+            // Set player and video gravity directly on controller
+            playerViewController.player = player
+            playerViewController.videoGravity = .resizeAspect
+            
+            // Store player in coordinator
+            context.coordinator.playerViewController = playerViewController
+            context.coordinator.containerView = containerView
+            
+            // Start playback (auto-play)
+            player.seek(to: .zero)
+            player.play()
+            print("🎬 Video playback started")
+            
+            // Add player view controller to container
+            containerView.addSubview(playerViewController.view)
             
             // Configure player for looping
             context.coordinator.setupPlayerForLooping()
             
-            // Start playback (auto-play)
-            player.play()
-            print("🎬 Video playback started")
-            
-            return view
+            return containerView
         }
         
         func updateUIView(_ uiView: UIView, context: Context) {
-            // Update the player layer frame when the view size changes
-            if let playerLayer = context.coordinator.playerLayer {
-                playerLayer.frame = uiView.bounds
+            // Make sure the player view controller's view stays properly sized
+            if let playerViewController = context.coordinator.playerViewController {
+                playerViewController.view.frame = uiView.bounds
+                
+                // Ensure player is attached to view controller
+                if playerViewController.player == nil {
+                    playerViewController.player = player
+                }
+                
+                // Force layout to ensure proper display
+                uiView.setNeedsLayout()
+                uiView.layoutIfNeeded()
             }
         }
         
@@ -1980,10 +2071,12 @@ struct StoryEditorView: View {
         
         class Coordinator: NSObject {
             let parent: CustomVideoPlayerView
-            var playerLayer: AVPlayerLayer?
+            var playerViewController: AVPlayerViewController?
+            var containerView: UIView?
             private var timeObserverToken: Any?
             private var itemEndObserver: NSObjectProtocol?
             private var playerItemObserver: NSKeyValueObservation?
+            private var statusObserver: NSKeyValueObservation?
             
             init(_ parent: CustomVideoPlayerView) {
                 self.parent = parent
@@ -2001,12 +2094,54 @@ struct StoryEditorView: View {
                     // Setup observation for the new item
                     if let item = player.currentItem {
                         self.observePlayerItem(item)
+                        
+                        // Add status observation for better debugging
+                        print("🎬 Observing status for new player item")
+                        let statusObserver = item.observe(\.status, options: [.new]) { item, _ in
+                            switch item.status {
+                            case .readyToPlay:
+                                print("🎬 Player item is ready to play")
+                            case .failed:
+                                if let error = item.error {
+                                    print("🎬 Player item failed with error: \(error.localizedDescription)")
+                                } else {
+                                    print("🎬 Player item failed with unknown error")
+                                }
+                            case .unknown:
+                                print("🎬 Player item status is unknown")
+                            @unknown default:
+                                print("🎬 Player item has unexpected status")
+                            }
+                        }
+                        // Store the observer to keep it alive
+                        self.statusObserver = statusObserver
                     }
                 }
                 
                 // Set up initial observation for current item
                 if let currentItem = parent.player.currentItem {
                     observePlayerItem(currentItem)
+                    
+                    // Also observe initial status
+                    print("🎬 Observing status for initial player item")
+                    let statusObserver = currentItem.observe(\.status, options: [.new]) { item, _ in
+                        switch item.status {
+                        case .readyToPlay:
+                            print("🎬 Initial player item is ready to play")
+                        case .failed:
+                            if let error = item.error {
+                                print("🎬 Initial player item failed with error: \(error.localizedDescription)")
+                            } else {
+                                print("🎬 Initial player item failed with unknown error")
+                            }
+                        case .unknown:
+                            print("🎬 Initial player item status is unknown")
+                        @unknown default:
+                            print("🎬 Initial player item has unexpected status")
+                        }
+                    }
+                    // Store the observer to keep it alive
+                    self.statusObserver = statusObserver
                 }
             }
             
@@ -2046,6 +2181,10 @@ struct StoryEditorView: View {
                 // Remove player item observer
                 playerItemObserver?.invalidate()
                 playerItemObserver = nil
+                
+                // Remove status observer
+                statusObserver?.invalidate()
+                statusObserver = nil
             }
             
             deinit {
@@ -2056,24 +2195,35 @@ struct StoryEditorView: View {
         
         static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
             print("🎬 Cleaning up video player resources")
+            
+            // Remove observers first
             coordinator.removeObservers()
-            coordinator.playerLayer?.removeFromSuperlayer()
+            
+            // Remove view controller view from superview
+            coordinator.playerViewController?.view.removeFromSuperview()
+            
+            // Release player from view controller
+            coordinator.playerViewController?.player = nil
             
             // Clean up the player resources when view is dismantled
-            // Fixed conditional binding - videoURL is already non-optional
             let videoURL = coordinator.parent.videoURL
             
-            // Clean up local instance
-            coordinator.parent.playerManager.cleanupPlayer(for: videoURL)
             
-            // Also clean up in shared manager
-            CustomVideoPlayerView.sharedPlayerManager.cleanupPlayer(for: videoURL)
+            // Clean up only using the shared manager
+            PlayerManager.shared.cleanupPlayer(for: videoURL)
         }
     }
     
     // PlayerManager to handle shared player instances
-    class PlayerManager: ObservableObject {
+    class PlayerManager {
+        // Create a single shared instance to be used throughout the app
+        static let shared = PlayerManager()
+        
         private var players: [URL: AVPlayer] = [:]
+        private var isCleanupInProgress = false
+        
+        // Private init to enforce singleton pattern
+        private init() {}
         
         func getPlayer(for url: URL) -> AVPlayer {
             if let existingPlayer = players[url] {
@@ -2082,13 +2232,16 @@ struct StoryEditorView: View {
                 // Check if the player item is still valid, if not recreate it
                 if existingPlayer.currentItem?.status == .failed || existingPlayer.currentItem == nil {
                     print("🎬 Existing player item is invalid, recreating...")
-                    existingPlayer.replaceCurrentItem(with: AVPlayerItem(url: url))
+                    let newItem = AVPlayerItem(url: url)
+                    existingPlayer.replaceCurrentItem(with: newItem)
                 }
                 
                 return existingPlayer
             } else {
                 print("🎬 Creating new player for: \(url.lastPathComponent)")
-                let player = AVPlayer(url: url)
+                // Create an item first to verify it loads properly
+                let playerItem = AVPlayerItem(url: url)
+                let player = AVPlayer(playerItem: playerItem)
                 
                 // Add periodic time observer to keep player active
                 let timeScale = CMTimeScale(NSEC_PER_SEC)
@@ -2121,18 +2274,28 @@ struct StoryEditorView: View {
         }
         
         func cleanupAllPlayers() {
-            for (url, player) in players {
-                player.pause()
-                player.replaceCurrentItem(with: nil)
-                print("🎬 Player cleaned up for: \(url.lastPathComponent)")
+            // Prevent recursive cleanup calls
+            if !isCleanupInProgress {
+                isCleanupInProgress = true
+                
+                for (url, player) in players {
+                    player.pause()
+                    player.replaceCurrentItem(with: nil)
+                    print("🎬 Player cleaned up for: \(url.lastPathComponent)")
+                }
+                players.removeAll()
+                print("🎬 All players cleaned up")
+                
+                isCleanupInProgress = false
             }
-            players.removeAll()
-            print("🎬 All players cleaned up")
         }
         
         deinit {
-            print("🎬 PlayerManager being deallocated, cleaning up resources")
-            cleanupAllPlayers()
+            // This should rarely happen since we're using a shared singleton
+            if !isCleanupInProgress {
+                print("🎬 PlayerManager being deallocated, cleaning up resources")
+                cleanupAllPlayers()
+            }
         }
     }
     

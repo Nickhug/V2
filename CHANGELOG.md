@@ -1,3 +1,22 @@
+# Version 1.0.26 (2025-04-02)
+
+## [FIX] Video Playback Aspect Ratio
+- Fixed issue where recorded videos were appearing zoomed in during playback
+- Changed AVPlayerLayer's videoGravity from resizeAspectFill to resizeAspect
+- Adjusted SwiftUI aspectRatio mode from .fill to .fit
+- Removed unnecessary clipping that was cutting off video content
+- Technical Decision: Used proper aspect ratio settings to maintain original video dimensions
+- Reference: V2/Views/Feed/StoryCreationView.swift
+
+## [FEATURE] Camera Zoom Selector
+- Added Apple-style camera zoom selector with 0.5x, 1x, 2x, and 3x options
+- Implemented zoom functionality in the CameraViewModel
+- Created iOS-style circular zoom control that expands to show options
+- Added automatic zoom reset when switching between front and back cameras
+- Enhanced camera initialization to properly set default zoom level
+- Technical Decision: Used native AVCaptureDevice zoom capabilities for optimal performance
+- Reference: V2/Views/Feed/CameraComponents.swift, V2/Views/Feed/StoryCreationView.swift
+
 # Version 1.0.25 (2025-04-01)
 
 ## [FIX] Video Player Access Level Issue
@@ -28,6 +47,45 @@
 - Added comprehensive cleanup in view dismantling to prevent memory leaks
 - Technical Decision: Used a combination of instance @StateObject and static shared manager
 - Reference: V2/Views/Feed/StoryCreationView.swift
+
+## March 20, 2025
+- [FIX] Complete overhaul of video playback to fix black screen issue
+  - Replaced AVPlayerLayer with AVPlayerViewController for more reliable video rendering
+  - Used explicit UIView frame sizing with proper autoresizing for video container
+  - Updated Coordinator to properly manage player resources and observers
+  - Implemented more robust view hierarchy management
+  - Added proper cleanup in dismantleUIView to prevent resource issues
+  - Used GeometryReader to provide accurate frame information to video component
+  - Fixed observation management to prevent crashes during view lifecycle
+  - Reference: V2/Views/Feed/StoryCreationView.swift
+
+## March 19, 2025
+- [FIX] Video playback aspect ratio and console flooding issues
+  - Fixed video appearing at half scale by changing videoGravity to resizeAspectFill
+  - Changed SwiftUI aspectRatio from .fit to .fill for proper video scaling
+  - Reduced console flooding by implementing proper singleton pattern in PlayerManager
+  - Eliminated redundant PlayerManager instances through static shared instance
+  - Added safeguards against recursive cleanup operations
+  - Reference: V2/Views/Feed/StoryCreationView.swift
+
+## March 18, 2025
+- [FIX] Fixed missing selectedZoomOption state variable in ImprovedCameraPreviewWithOverlay
+  - Added @State private var selectedZoomOption property
+  - Initialized default zoom option in onAppear modifier
+  - Resolved "Cannot find '$selectedZoomOption' in scope" error
+  - Reference: V2/Views/Feed/CameraComponents.swift
+
+## March 17, 2025
+- [UI] Redesigned camera zoom selector for improved usability
+  - Reduced size by approximately 75% for less intrusive UI
+  - Repositioned to bottom of screen near capture controls
+  - Implemented modern iOS 18 style horizontal zoom selection
+  - Fixed 0.5x zoom functionality for devices with ultra-wide camera
+  - Updated onChange implementation to use iOS 17+ syntax
+  - Reference: V2/Views/Feed/CameraComponents.swift
+
+## March 16, 2025
+- [FIX] Added Equatable conformance to CameraViewModel.ZoomOption to resolve compiler error when using onChange modifier with optional ZoomOption values
 
 # Version 1.0.22 (2025-03-29)
 

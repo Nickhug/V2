@@ -111,6 +111,9 @@ struct ImprovedCameraPreviewWithOverlay: View {
     @State private var selectedMode: CameraMode = .photo
     @State private var isCapturing = false
     
+    // Add state for zoom selection
+    @State private var selectedZoomOption: CameraViewModel.ZoomOption?
+    
     var didCapturePhoto: ((UIImage?) -> Void)?
     var didCaptureVideo: ((URL) -> Void)?
     
@@ -265,133 +268,140 @@ struct ImprovedCameraPreviewWithOverlay: View {
                                 
                                 Spacer()
                                 
-                                // Mode selector (photo/video)
-                                HStack {
-                                    Spacer()
+                                // Bottom Controls Section
+                                VStack(spacing: 20) {
+                                    // Add zoom selector above the capture buttons
+                                    ZoomSelectorView(model: model, selectedOption: $selectedZoomOption)
+                                        .padding(.bottom, 12)
                                     
-                                    // Photo mode button
-                                    Button(action: {
-                                        selectedMode = .photo
-                                    }) {
-                                        Text("Photo")
-                                            .font(.subheadline)
-                                            .fontWeight(selectedMode == .photo ? .bold : .regular)
-                                            .foregroundColor(selectedMode == .photo ? .white : .white.opacity(0.6))
-                                            .padding(.vertical, 8)
-                                            .padding(.horizontal, 16)
-                                            .background(selectedMode == .photo ? Color.white.opacity(0.3) : Color.clear)
-                                            .cornerRadius(16)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    // Video mode button
-                                    Button(action: {
-                                        selectedMode = .video
-                                    }) {
-                                        Text("Video")
-                                            .font(.subheadline)
-                                            .fontWeight(selectedMode == .video ? .bold : .regular)
-                                            .foregroundColor(selectedMode == .video ? .white : .white.opacity(0.6))
-                                            .padding(.vertical, 8)
-                                            .padding(.horizontal, 16)
-                                            .background(selectedMode == .video ? Color.white.opacity(0.3) : Color.clear)
-                                            .cornerRadius(16)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    
-                                    Spacer()
-                                }
-                                .padding(.bottom, 20)
-                                
-                                // Capture button row
-                                HStack {
-                                    Spacer()
-                                    
-                                    // Capture button
-                                    Button(action: {
-                                        isCapturing = true
+                                    // Mode selector (photo/video)
+                                    HStack {
+                                        Spacer()
                                         
-                                        if selectedMode == .photo {
-                                            // Capture photo with feedback
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                // Flash animation
-                                                let flashView = UIView(frame: UIScreen.main.bounds)
-                                                flashView.backgroundColor = .white
-                                                flashView.alpha = 0.8
-                                                
-                                                // Get the active window scene
-                                                if let windowScene = UIApplication.shared.connectedScenes
-                                                    .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-                                                   let window = windowScene.windows.first {
-                                                    window.addSubview(flashView)
-                                                    
-                                                    UIView.animate(withDuration: 0.2, animations: {
-                                                        flashView.alpha = 0
-                                                    }) { _ in
-                                                        flashView.removeFromSuperview()
-                                                    }
-                                                }
-                                            }
-                                            
-                                            // Haptic feedback
-                                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                                            generator.prepare()
-                                            generator.impactOccurred()
-                                            
-                                            model.capturePhoto { image in
-                                                DispatchQueue.main.async {
-                                                    if let image = image {
-                                                        // Trigger completion handler on main thread
-                                                        didCapturePhoto?(image)
-                                                        
-                                                        // Success haptic
-                                                        let successGenerator = UINotificationFeedbackGenerator()
-                                                        successGenerator.notificationOccurred(.success)
-                                                    } else {
-                                                        // Error haptic
-                                                        let errorGenerator = UINotificationFeedbackGenerator()
-                                                        errorGenerator.notificationOccurred(.error)
-                                                    }
-                                                    isCapturing = false
-                                                }
-                                            }
-                                        } else {
-                                            // Toggle video recording
-                                            if !model.isRecording {
-                                                model.startRecording { url in
-                                                    if let url = url {
-                                                        didCaptureVideo?(url)
-                                                    }
-                                                    isCapturing = false
-                                                }
-                                            } else {
-                                                model.stopRecording()
-                                            }
+                                        // Photo mode button
+                                        Button(action: {
+                                            selectedMode = .photo
+                                        }) {
+                                            Text("Photo")
+                                                .font(.subheadline)
+                                                .fontWeight(selectedMode == .photo ? .bold : .regular)
+                                                .foregroundColor(selectedMode == .photo ? .white : .white.opacity(0.6))
+                                                .padding(.vertical, 8)
+                                                .padding(.horizontal, 16)
+                                                .background(selectedMode == .photo ? Color.white.opacity(0.3) : Color.clear)
+                                                .cornerRadius(16)
                                         }
-                                    }) {
-                                        ZStack {
-                                            Circle()
-                                                .stroke(Color.white, lineWidth: 3)
-                                                .frame(width: 72, height: 72)
-                                            
-                                            if selectedMode == .video && model.isRecording {
-                                                // Recording indicator
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(Color.red)
-                                                    .frame(width: 26, height: 26)
-                                            } else {
-                                                Circle()
-                                                    .fill(Color.white)
-                                                    .frame(width: 66, height: 66)
-                                            }
+                                        .buttonStyle(PlainButtonStyle())
+                                        
+                                        // Video mode button
+                                        Button(action: {
+                                            selectedMode = .video
+                                        }) {
+                                            Text("Video")
+                                                .font(.subheadline)
+                                                .fontWeight(selectedMode == .video ? .bold : .regular)
+                                                .foregroundColor(selectedMode == .video ? .white : .white.opacity(0.6))
+                                                .padding(.vertical, 8)
+                                                .padding(.horizontal, 16)
+                                                .background(selectedMode == .video ? Color.white.opacity(0.3) : Color.clear)
+                                                .cornerRadius(16)
                                         }
+                                        .buttonStyle(PlainButtonStyle())
+                                        
+                                        Spacer()
                                     }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .disabled(isCapturing && selectedMode == .photo)
+                                    .padding(.bottom, 20)
                                     
-                                    Spacer()
+                                    // Capture button row
+                                    HStack {
+                                        Spacer()
+                                        
+                                        // Capture button
+                                        Button(action: {
+                                            isCapturing = true
+                                            
+                                            if selectedMode == .photo {
+                                                // Capture photo with feedback
+                                                withAnimation(.easeInOut(duration: 0.2)) {
+                                                    // Flash animation
+                                                    let flashView = UIView(frame: UIScreen.main.bounds)
+                                                    flashView.backgroundColor = .white
+                                                    flashView.alpha = 0.8
+                                                    
+                                                    // Get the active window scene
+                                                    if let windowScene = UIApplication.shared.connectedScenes
+                                                        .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+                                                       let window = windowScene.windows.first {
+                                                        window.addSubview(flashView)
+                                                        
+                                                        UIView.animate(withDuration: 0.2, animations: {
+                                                            flashView.alpha = 0
+                                                        }) { _ in
+                                                            flashView.removeFromSuperview()
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                // Haptic feedback
+                                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                                generator.prepare()
+                                                generator.impactOccurred()
+                                                
+                                                model.capturePhoto { image in
+                                                    DispatchQueue.main.async {
+                                                        if let image = image {
+                                                            // Trigger completion handler on main thread
+                                                            didCapturePhoto?(image)
+                                                            
+                                                            // Success haptic
+                                                            let successGenerator = UINotificationFeedbackGenerator()
+                                                            successGenerator.notificationOccurred(.success)
+                                                        } else {
+                                                            // Error haptic
+                                                            let errorGenerator = UINotificationFeedbackGenerator()
+                                                            errorGenerator.notificationOccurred(.error)
+                                                        }
+                                                        isCapturing = false
+                                                    }
+                                                }
+                                            } else {
+                                                // Toggle video recording
+                                                if !model.isRecording {
+                                                    model.startRecording { url in
+                                                        if let url = url {
+                                                            didCaptureVideo?(url)
+                                                        }
+                                                        isCapturing = false
+                                                    }
+                                                } else {
+                                                    model.stopRecording()
+                                                }
+                                            }
+                                        }) {
+                                            ZStack {
+                                                Circle()
+                                                    .stroke(Color.white, lineWidth: 3)
+                                                    .frame(width: 72, height: 72)
+                                                
+                                                if selectedMode == .video && model.isRecording {
+                                                    // Recording indicator
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .fill(Color.red)
+                                                        .frame(width: 26, height: 26)
+                                                } else {
+                                                    Circle()
+                                                        .fill(Color.white)
+                                                        .frame(width: 66, height: 66)
+                                                }
+                                            }
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                        .disabled(isCapturing && selectedMode == .photo)
+                                        
+                                        Spacer()
+                                    }
+                                    .padding(.bottom, 30)
                                 }
-                                .padding(.bottom, 30)
                             }
                         }
                     }
@@ -405,6 +415,9 @@ struct ImprovedCameraPreviewWithOverlay: View {
             if model.cameraSetupProgress < 0.3 {
                 model.checkCameraPermission()
             }
+            
+            // Initialize the default zoom option
+            selectedZoomOption = model.zoomOptions.first(where: { $0.isDefault }) ?? model.zoomOptions[1]
         }
     }
 }
@@ -492,6 +505,82 @@ extension CameraViewModel {
         // Update state
         DispatchQueue.main.async {
             self.isRecording = false
+        }
+    }
+}
+
+// MARK: - Zoom Selector View
+struct ZoomSelectorView: View {
+    @ObservedObject var model: CameraViewModel
+    @Binding var selectedOption: CameraViewModel.ZoomOption?
+    
+    // Animation state
+    @State private var showZoomOptions: Bool = false
+    
+    var body: some View {
+        ZStack {
+            // Main zoom selector button when options are hidden
+            if !showZoomOptions {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showZoomOptions = true
+                    }
+                }) {
+                    ZStack {
+                        // Background
+                        Circle()
+                            .fill(Color.black.opacity(0.5))
+                            .frame(width: 36, height: 36)
+                        
+                        // Zoom Text
+                        Text(selectedOption?.name ?? "1x")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                // Expanded horizontal zoom options
+                HStack(spacing: 20) {
+                    ForEach(model.zoomOptions) { option in
+                        Button(action: {
+                            selectZoomOption(option)
+                        }) {
+                            ZStack {
+                                // Background
+                                Circle()
+                                    .fill(option.id == selectedOption?.id ? Color.white : Color.black.opacity(0.5))
+                                    .frame(width: 36, height: 36)
+                                
+                                // Zoom Text
+                                Text(option.name)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(option.id == selectedOption?.id ? .black : .white)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.4))
+                )
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+            }
+        }
+        .onChange(of: selectedOption) { _, newValue in
+            if let option = newValue {
+                model.selectZoomOption(option)
+            }
+        }
+    }
+    
+    private func selectZoomOption(_ option: CameraViewModel.ZoomOption) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedOption = option
+            showZoomOptions = false
         }
     }
 } 
