@@ -127,118 +127,25 @@ struct StoryCreationView: View {
                         }
                     )
                 } else if creationState == .editor {
-                    if let selectedImage = viewModel.selectedImage ?? localImageRef {
-                        ServiceBasedEditorView(image: selectedImage)
-                            .onAppear {
-                                // Reset the rendering service when view appears
-                                OverlayRenderingService.shared.reset()
+                    StoryEditorView(
+                        viewModel: viewModel,
+                        isPresented: $isPresented,
+                        onShare: {
+                            print("📤 Share button pressed in editor")
+                            Task {
+                                if await viewModel.uploadStory() {
+                                    isPresented = false
+                                }
                             }
-                            .overlay(
-                                VStack {
-                                    // Top toolbar with back and share buttons
-                                    HStack {
-                                        // Back button
-                                        Button(action: {
-                                            print("❌ Editor cancelled")
-                                            withAnimation {
-                                                creationState = .camera
-                                                showEditor = false
-                                            }
-                                        }) {
-                                            Image(systemName: "xmark")
-                                                .font(.title2)
-                                                .foregroundColor(.white)
-                                                .padding()
-                                                .background(Circle().fill(Color.black.opacity(0.5)))
-                                        }
-                                        .padding(.leading, 16)
-                                        
-                                        Spacer()
-                                        
-                                        // Share button
-                                        Button(action: {
-                                            print("📤 Share button pressed in editor")
-                                            Task {
-                                                if await viewModel.uploadStory() {
-                                                    isPresented = false
-                                                }
-                                            }
-                                        }) {
-                                            Text("Share")
-                                                .fontWeight(.bold)
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 8)
-                                                .background(Capsule().fill(Color.blue))
-                                        }
-                                        .padding(.trailing, 16)
-                                    }
-                                    .padding(.top, 8)
-                                    
-                                    Spacer()
-                                },
-                                alignment: .top
-                            )
-                    } else if let videoURL = viewModel.selectedVideo ?? localVideoRef {
-                        ServiceBasedEditorView(videoURL: videoURL)
-                            .onAppear {
-                                // Reset the rendering service when view appears
-                                OverlayRenderingService.shared.reset()
+                        },
+                        onCancel: {
+                            print("❌ Editor cancelled")
+                            withAnimation {
+                                creationState = .camera
+                                showEditor = false
                             }
-                            .overlay(
-                                VStack {
-                                    // Top toolbar with back and share buttons
-                                    HStack {
-                                        // Back button
-                                        Button(action: {
-                                            print("❌ Editor cancelled")
-                                            withAnimation {
-                                                creationState = .camera
-                                                showEditor = false
-                                            }
-                                        }) {
-                                            Image(systemName: "xmark")
-                                                .font(.title2)
-                                                .foregroundColor(.white)
-                                                .padding()
-                                                .background(Circle().fill(Color.black.opacity(0.5)))
-                                        }
-                                        .padding(.leading, 16)
-                                        
-                                        Spacer()
-                                        
-                                        // Share button
-                                        Button(action: {
-                                            print("📤 Share button pressed in editor")
-                                            Task {
-                                                if await viewModel.uploadStory() {
-                                                    isPresented = false
-                                                }
-                                            }
-                                        }) {
-                                            Text("Share")
-                                                .fontWeight(.bold)
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 8)
-                                                .background(Capsule().fill(Color.blue))
-                                        }
-                                        .padding(.trailing, 16)
-                                    }
-                                    .padding(.top, 8)
-                                    
-                                    Spacer()
-                                },
-                                alignment: .top
-                            )
-                    } else {
-                        // Fallback if no media is available
-                        Text("No media available")
-                            .foregroundColor(.white)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
-                    }
+                        }
+                    )
                 }
             }
             
@@ -458,35 +365,6 @@ struct StoryCreationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-    }
-
-    // Add this helper method to StoryCreationView
-    private func createEditorView() -> some View {
-        if let image = viewModel.selectedImage ?? localImageRef {
-            return AnyView(
-                ServiceBasedEditorView(image: image)
-                    .onAppear {
-                        // Reset the editor state when appearing
-                        OverlayRenderingService.shared.reset()
-                    }
-            )
-        } else if let videoURL = viewModel.selectedVideo ?? localVideoRef {
-            return AnyView(
-                ServiceBasedEditorView(videoURL: videoURL)
-                    .onAppear {
-                        // Reset the editor state when appearing
-                        OverlayRenderingService.shared.reset()
-                    }
-            )
-        } else {
-            // Fallback view if no media selected
-            return AnyView(
-                VStack {
-                    Text("No media selected")
-                        .foregroundColor(.white)
-                }
-            )
-        }
     }
 }
 
@@ -1675,7 +1553,7 @@ struct StoryEditorView: View {
                 // but do it WITHOUT delay to prevent flickering
                 switch selectedTool {
                 case .text:
-                    viewModel.editingMode = .text(overlayId: viewModel.selectedTextOverlay)
+                    viewModel.editingMode = .text
                     viewModel.shouldKeepEditing = true
                     if viewModel.textOverlays.isEmpty {
                         viewModel.addTextOverlay()
@@ -1953,7 +1831,7 @@ struct StoryEditorView: View {
                         // Ensure we maintain text mode
                         viewModel.textOverlays[index].text = textInput
                         // Make sure we stay in text editing mode
-                        viewModel.editingMode = .text(overlayId: editId)
+                        viewModel.editingMode = .text
                         viewModel.shouldKeepEditing = true
                         DispatchQueue.main.async {
                             activeTextEditId = nil
@@ -2488,21 +2366,21 @@ struct StoryEditorView: View {
         // Determine if this overlay is selected
         let isSelected = viewModel.selectedTextOverlay == overlay.id
         
+        // Determine if editing is enabled for this overlay - modified to make overlay always visible
+        // but only editable when in text mode
+        let isEditable = selectedEditTool == .text || 
+                         (viewModel.editingMode == .text && selectedEditTool == .none)
+        
         return TextOverlayView(
             overlay: overlay,
             isSelected: isSelected,
             isEditing: false,
             onTap: {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    // CRITICAL FIX: Set the editing mode directly using associated value
-                    viewModel.editingMode = .text(overlayId: overlay.id)
                     viewModel.selectedTextOverlay = overlay.id
                     viewModel.shouldKeepEditing = true
                     // Auto-select text tool when tapping on text
                     selectedEditTool = .text
-                    
-                    // Force state persistence with new state manager
-                    viewModel.forceStatePersistence()
                 }
             },
             onDelete: {
@@ -2511,26 +2389,13 @@ struct StoryEditorView: View {
                 }
             },
             onMove: { newPosition in
-                // CRITICAL FIX: Make sure editing mode stays in text mode during movement
-                viewModel.editingMode = .text(overlayId: overlay.id)
-                viewModel.shouldKeepEditing = true
                 updateOverlayPosition(overlay: overlay, newPosition: newPosition)
-                // Force state persistence during movement
-                viewModel.forceStatePersistence()
             },
             onRotate: { angle in
-                // CRITICAL FIX: Make sure editing mode stays in text mode during rotation
-                viewModel.editingMode = .text(overlayId: overlay.id)
-                viewModel.shouldKeepEditing = true
                 updateOverlayRotation(overlay: overlay, angle: angle)
-                // Force state persistence during rotation
-                viewModel.forceStatePersistence()
             },
             onSelect: {
-                // CRITICAL FIX: Use proper editing mode with overlayId
-                viewModel.editingMode = .text(overlayId: overlay.id)
                 viewModel.selectedTextOverlay = overlay.id
-                viewModel.shouldKeepEditing = true
             },
             isEnabled: true // Always show overlays, but only make them interactive when in text mode
         )
@@ -2551,7 +2416,7 @@ struct StoryEditorView: View {
         // Apply rotation update
         if let index = viewModel.textOverlays.firstIndex(where: { $0.id == overlay.id }) {
             var updatedOverlay = overlay
-            updatedOverlay.rotation = angle
+            updatedOverlay.rotation = angle.degrees
             viewModel.textOverlays[index] = updatedOverlay
         }
     }

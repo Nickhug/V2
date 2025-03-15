@@ -20,6 +20,12 @@ struct TextOverlayView: View {
     @State private var lastRotation: Angle = .zero
     @GestureState private var isMoving: Bool = false
     
+    // CRITICAL FIX: Add a timer to periodically ensure selection state is maintained
+    // This prevents overlay from disappearing due to state loss
+    @State private var keepAliveTimer: Timer?
+    // Add last selection time to help with persistence
+    @State private var lastSelectionTime: Date = Date()
+    
     // Helpers to get font
     private func getFont() -> Font {
         switch overlay.fontName {
@@ -43,7 +49,14 @@ struct TextOverlayView: View {
         contentView
             .gesture(isEnabled ? moveGesture : nil)
             .gesture(isEnabled && isSelected ? rotationGesture : nil)
-            .opacity(isEnabled ? 1.0 : 0.0)
+            .onAppear {
+                // CRITICAL FIX: Start the keep-alive timer when the overlay appears
+                startKeepAliveTimer()
+            }
+            .onDisappear {
+                // Clean up timer when overlay disappears
+                stopKeepAliveTimer()
+            }
     }
     
     // Content view with text and selection frame
@@ -54,18 +67,52 @@ struct TextOverlayView: View {
                 .font(getFont())
                 .foregroundColor(overlay.color)
                 .multilineTextAlignment(.center)
-                .rotationEffect(Angle(degrees: Double(overlay.rotation)) + rotation)
+                .rotationEffect(overlay.rotation + rotation)
                 .fixedSize()
                 .onTapGesture {
                     onTap()
+                    // CRITICAL FIX: Also refresh the keep-alive timer on tap
+                    refreshKeepAliveTimer()
                 }
             
-            // Selection frame when selected
-            if isSelected {
+            // Selection frame when selected and in edit mode
+            if isSelected && isEnabled {
                 selectionFrame
             }
         }
         .offset(offset)
+    }
+    
+    // CRITICAL FIX: Methods to manage the keep-alive timer
+    private func startKeepAliveTimer() {
+        // Create a timer that fires every 0.1 seconds to maintain state
+        keepAliveTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            // Keep selection active on a more frequent basis
+            if isSelected {
+                // Re-trigger selection to prevent state loss
+                DispatchQueue.main.async {
+                    // Update selection timestamp
+                    lastSelectionTime = Date()
+                    onSelect()
+                }
+            } else if Date().timeIntervalSince(lastSelectionTime) < 2.0 {
+                // If we were selected very recently (within last 2 seconds)
+                // but lost selection, try to restore it
+                DispatchQueue.main.async {
+                    onSelect()
+                }
+            }
+        }
+    }
+    
+    private func stopKeepAliveTimer() {
+        keepAliveTimer?.invalidate()
+        keepAliveTimer = nil
+    }
+    
+    private func refreshKeepAliveTimer() {
+        stopKeepAliveTimer()
+        startKeepAliveTimer()
     }
     
     // Selection frame with controls
@@ -142,6 +189,9 @@ struct TextOverlayView: View {
                 )
                 
                 onMove(newPosition)
+                
+                // CRITICAL FIX: Reset the keep-alive timer during movement
+                refreshKeepAliveTimer()
             }
             .onEnded { value in
                 self.lastOffset = self.offset
@@ -154,6 +204,9 @@ struct TextOverlayView: View {
             .onChanged { angle in
                 self.rotation = angle
                 onRotate(angle)
+                
+                // CRITICAL FIX: Reset the keep-alive timer during rotation
+                refreshKeepAliveTimer()
             }
             .onEnded { angle in
                 self.lastRotation = self.rotation

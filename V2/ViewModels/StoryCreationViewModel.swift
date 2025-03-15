@@ -5,6 +5,9 @@ import CoreLocation
 import PhotosUI
 import AVFoundation
 
+// Import editor models directly
+import SwiftUI
+
 @MainActor
 class StoryCreationViewModel: NSObject, ObservableObject {
     // Published properties for UI
@@ -27,17 +30,47 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     @Published var textOverlays: [TextOverlay] = []
     @Published var currentImageScale: CGFloat = 1.0
     @Published var currentImageOffset: CGSize = .zero
-    @Published var selectedTextOverlay: UUID?
+    @Published var _selectedTextOverlay: UUID? {
+        didSet {
+            if let overlayId = _selectedTextOverlay, oldValue != overlayId {
+                // Auto-update editing mode to match selection
+                if !editingMode.isTextMode || editingMode.selectedOverlayId != overlayId {
+                    _internalSetEditingMode(.text(overlayId: overlayId))
+                    shouldKeepEditing = true
+                }
+            } else if _selectedTextOverlay == nil && oldValue != nil {
+                // Selection was cleared, but keep the text mode with nil selection
+                if editingMode.isTextMode {
+                    _internalSetEditingMode(.text(overlayId: nil))
+                }
+            }
+        }
+    }
     @Published var brushColor: Color = .white
     @Published var brushSize: CGFloat = 3.0
     @Published var drawingPaths: [DrawingPath] = []
     @Published var currentDrawingPath: DrawingPath?
-    @Published var editingMode: EditingMode = .transform
+    @Published var editingMode: EditingMode = .transform {
+        willSet {
+            // Force shouldKeepEditing to be true for all non-transform modes
+            if case .transform = newValue {
+                // Allow transform mode to not keep editing
+            } else {
+                shouldKeepEditing = true
+            }
+        }
+        didSet {
+            // Force stateManager to ensure consistency
+            // No need for DispatchAsync since we're already on the main actor
+            stateManager?.enforceStateConsistency()
+        }
+    }
     
     // History stacks for undo/redo
     @Published var drawingHistory: [[DrawingPath]] = []
     @Published var textHistory: [[TextOverlay]] = []
-    @Published var historyIndex: Int = 0
+    @Published var drawingHistoryIndex: Int = 0
+    @Published var textHistoryIndex: Int = 0
     
     // Animation properties
     @Published var toolTransitionActive: Bool = false
@@ -52,6 +85,12 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     
     // Reference to the StoriesViewModel
     private let storiesViewModel: StoriesViewModel
+    
+    // Add reference to the media processor service
+    private let mediaProcessor = MediaProcessorService()
+    
+    // Add property to track processing progress
+    @Published var processingProgress: Float = 0.0
     
     // Photo capture related properties
     private var captureSession: AVCaptureSession?
@@ -69,6 +108,9 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     // Add a new property to track preloading state
     @Published var isMediaPreloaded: Bool = false
     
+    // Add stateManager property
+    private var stateManager: OverlayStateManager!
+    
     // Enum for media type
     enum MediaType {
         case image
@@ -81,12 +123,49 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         case video
     }
     
-    // Enum for editor modes
-    enum EditingMode {
+    // Enum for editor modes - REPLACED with State Machine implementation
+    enum EditingMode: Equatable {
         case transform
-        case text
+        case text(overlayId: UUID?)
         case draw
         case stickers
+        
+        // Prevent unwanted transitions
+        func canTransitionTo(_ newMode: EditingMode) -> Bool {
+            // Special case: Allow transform mode only when explicitly requested
+            if case .transform = newMode {
+                return true
+            }
+            
+            // Prevent automatic deselection of text mode
+            if case .text = self, case .transform = newMode {
+                return false
+            }
+            
+            // Prevent automatic deselection of draw mode
+            if case .draw = self, case .transform = newMode {
+                return false
+            }
+            
+            // Always allow transitions between editing modes
+            return true
+        }
+        
+        // State information accessors
+        var isTextMode: Bool {
+            if case .text = self { return true }
+            return false
+        }
+        
+        var isDrawMode: Bool {
+            if case .draw = self { return true }
+            return false
+        }
+        
+        var selectedOverlayId: UUID? {
+            if case .text(let overlayId) = self { return overlayId }
+            return nil
+        }
     }
     
     init(storiesViewModel: StoriesViewModel) {
@@ -94,34 +173,54 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         super.init()
         // Camera launches directly in the new design
         self.showCamera = true
+        
+        // Initialize the state manager immediately - no need for dispatch since we're on the main actor
+        self.stateManager = OverlayStateManager(viewModel: self)
     }
     
     // MARK: - Editor Methods
     
     func addTextOverlay() {
         print("Adding new text overlay")
-        // Ensure we're in text editing mode
-        editingMode = .text
-        shouldKeepEditing = true
+        // Ensure we're in text editing mode with no specific overlay yet
         
         // Save current state to history before adding
         saveTextHistory()
         
+        // Create a new overlay with a stable UUID
+        let overlayId = UUID()
         let newOverlay = TextOverlay(
-            id: UUID(),
+            id: overlayId,
             text: "Tap to edit",
             position: CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2),
             fontSize: selectedFontSize,
             color: .white,
-            rotation: 0,
+            rotation: .zero,
             fontName: selectedFontName
         )
-        textOverlays.append(newOverlay)
-        selectedTextOverlay = newOverlay.id
-        print("Created new text overlay with ID: \(newOverlay.id) using font: \(selectedFontName) size: \(selectedFontSize)")
         
-        // Add animation transition
-        animateToolTransition()
+        // Add to the collection
+        textOverlays.append(newOverlay)
+        
+        // Set directly in the editing mode to ensure they stay linked
+        editingMode = .text(overlayId: overlayId)
+        shouldKeepEditing = true
+        
+        // Also set in the separate property for backward compatibility
+        _selectedTextOverlay = overlayId
+        
+        print("Created new text overlay with ID: \(overlayId) using font: \(selectedFontName) size: \(selectedFontSize)")
+        
+        // Minimal animation to avoid state resets
+        withAnimation(.easeInOut(duration: 0.2)) {
+            toolTransitionActive = true
+            // No nesting of animations or delayed state changes
+        }
+        
+        // Reset animation flag after delay without touching other state
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.toolTransitionActive = false
+        }
     }
     
     func removeTextOverlay(id: UUID) {
@@ -131,8 +230,8 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         textOverlays.removeAll(where: { overlay in
             overlay.id == id
         })
-        if selectedTextOverlay == id {
-            selectedTextOverlay = nil
+        if _selectedTextOverlay == id {
+            _selectedTextOverlay = nil
         }
     }
     
@@ -167,48 +266,117 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     }
     
     func undoLastDrawing() {
-        if !drawingPaths.isEmpty && historyIndex > 0 {
-            historyIndex -= 1
-            drawingPaths = drawingHistory[historyIndex]
+        if !drawingPaths.isEmpty && drawingHistoryIndex > 0 {
+            drawingHistoryIndex -= 1
+            drawingPaths = drawingHistory[drawingHistoryIndex]
+            // Critical: Don't reset editing mode here
+            shouldKeepEditing = true
         }
     }
     
     func redoDrawing() {
-        if historyIndex < drawingHistory.count - 1 {
-            historyIndex += 1
-            drawingPaths = drawingHistory[historyIndex]
+        if drawingHistoryIndex < drawingHistory.count - 1 {
+            drawingHistoryIndex += 1
+            drawingPaths = drawingHistory[drawingHistoryIndex]
+            // Critical: Don't reset editing mode here
+            shouldKeepEditing = true
         }
     }
     
     private func saveDrawingHistory() {
         // Remove any redo history if we're not at the end
-        if historyIndex < drawingHistory.count - 1 {
-            drawingHistory = Array(drawingHistory.prefix(historyIndex + 1))
+        if drawingHistoryIndex < drawingHistory.count - 1 {
+            drawingHistory = Array(drawingHistory.prefix(drawingHistoryIndex + 1))
         }
         
         // Add current state to history
         drawingHistory.append(drawingPaths)
-        historyIndex = drawingHistory.count - 1
+        drawingHistoryIndex = drawingHistory.count - 1
     }
     
     private func saveTextHistory() {
         // Remove any redo history if we're not at the end
-        if historyIndex < textHistory.count - 1 {
-            textHistory = Array(textHistory.prefix(historyIndex + 1))
+        if textHistoryIndex < textHistory.count - 1 {
+            textHistory = Array(textHistory.prefix(textHistoryIndex + 1))
         }
         
         // Add current state to history
         textHistory.append(textOverlays)
-        historyIndex = textHistory.count - 1
+        textHistoryIndex = textHistory.count - 1
     }
     
     func animateToolTransition() {
         // Set flag for UI animation
         toolTransitionActive = true
         
-        // Reset after animation duration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        // CRITICAL FIX: Immediately validate state first, before animation even starts
+        validateOverlayState()
+        
+        // DO NOT reset the shouldKeepEditing flag - this is the key issue
+        // Reset after animation duration - give more time for UI to stabilize
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.toolTransitionActive = false
+            
+            // IMPORTANT: Always validate overlay state, not just when shouldKeepEditing is true
+            // This ensures we don't lose state during transitions
+            self.validateOverlayState()
+            
+            // Force consistent state for text mode
+            if self.editingMode.isTextMode {
+                // Ensure we have a text overlay and selection
+                if self.textOverlays.isEmpty {
+                    self.addTextOverlay()
+                } else if self._selectedTextOverlay == nil {
+                    self._selectedTextOverlay = self.textOverlays.first?.id
+                }
+            }
+            
+            // Add debugging for tool transition completion
+            print("🔄 Tool transition animation completed - Mode: \(self.editingMode), shouldKeepEditing: \(self.shouldKeepEditing)")
+            
+            // Run a second validation pass after a small delay to catch any state loss
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.validateOverlayState()
+            }
+        }
+    }
+    
+    // New method to validate and preserve overlay state
+    func validateOverlayState() {
+        // Force check to make sure text overlay state is consistent
+        if editingMode.isTextMode {
+            // Critical fix: Create an overlay if needed - don't just select an existing one
+            if textOverlays.isEmpty {
+                print("🔄 Text mode active but no overlays - creating new overlay")
+                addTextOverlay()
+            } else if _selectedTextOverlay == nil {
+                _selectedTextOverlay = textOverlays.first?.id
+                print("🔍 Restored text selection state to \(String(describing: _selectedTextOverlay))")
+            } else {
+                // Verify the selected overlay still exists (it may have been deleted)
+                let overlayExists = textOverlays.contains(where: { $0.id == _selectedTextOverlay })
+                if !overlayExists {
+                    _selectedTextOverlay = textOverlays.first?.id
+                    print("🔄 Selected overlay no longer exists - selecting first available")
+                }
+            }
+        }
+        
+        // Force check to make sure drawing state is consistent
+        if editingMode.isDrawMode {
+            // Ensure at least one path exists for visual feedback
+            if drawingPaths.isEmpty && currentDrawingPath == nil {
+                print("🔍 Drawing mode active but no paths - drawing tool still ready")
+                shouldKeepEditing = true
+            }
+        }
+        
+        // Most important: Ensure shouldKeepEditing flag is properly set based on mode
+        switch editingMode {
+        case .text, .draw, .stickers:
+            shouldKeepEditing = true
+        default:
+            break
         }
     }
     
@@ -332,107 +500,120 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         isLoading = true
         
         var success = false
-        var finalImage: UIImage?
         
-        // If there are any overlays or drawings, render them onto the image
-        if let image = selectedImage, (!textOverlays.isEmpty || !drawingPaths.isEmpty) {
-            finalImage = renderOverlaysToImage(image)
-        } else {
-            finalImage = selectedImage
-        }
-        
-        // Determine which type of story to share
-        if let image = finalImage {
-            // Try to share image story
-            success = await storiesViewModel.createImageStory(
-                image: image,
-                caption: caption.isEmpty ? nil : caption,
-                location: location,
-                locationName: locationName
-            )
-        } else if let videoURL = selectedVideo {
-            // Try to share video story
-            success = await storiesViewModel.createVideoStory(
-                videoURL: videoURL,
-                caption: caption.isEmpty ? nil : caption,
-                location: location,
-                locationName: locationName
-            )
+        do {
+            // Process based on media type
+            if let image = selectedImage {
+                // Use OverlayRenderingService to render overlays
+                let renderingService = OverlayRenderingService.shared
+                let hasOverlays = !renderingService.textOverlays.isEmpty || !renderingService.drawingPaths.isEmpty
+                
+                if hasOverlays {
+                    // Process image with overlays using the rendering service
+                    print("🖼️ Processing image with \(renderingService.textOverlays.count) text overlays and \(renderingService.drawingPaths.count) drawings")
+                    
+                    let processedImage = renderingService.renderOverlaysToImage(image)
+                    
+                    // Upload the processed image
+                    success = await storiesViewModel.createImageStory(
+                        image: processedImage,
+                        caption: caption.isEmpty ? nil : caption,
+                        location: location,
+                        locationName: locationName
+                    )
+                } else {
+                    // Upload the original image if no overlays
+                    success = await storiesViewModel.createImageStory(
+                        image: image,
+                        caption: caption.isEmpty ? nil : caption,
+                        location: location,
+                        locationName: locationName
+                    )
+                }
+            } else if let videoURL = selectedVideo {
+                // For videos, we still use the mediaProcessor as video processing is more complex
+                // Check if the video has overlays or drawings
+                let renderingService = OverlayRenderingService.shared
+                let hasOverlays = !renderingService.textOverlays.isEmpty || !renderingService.drawingPaths.isEmpty
+                
+                if hasOverlays {
+                    // Show processing state
+                    errorMessage = "Processing video..."
+                    showErrorMessage = true
+                    
+                    // Convert rendering service overlays to legacy format for video processing
+                    let legacyTextOverlays = renderingService.textOverlays.map { overlay -> TextOverlay in
+                        return TextOverlay(
+                            id: overlay.id,
+                            text: overlay.text,
+                            position: overlay.position,
+                            fontSize: overlay.fontSize,
+                            color: overlay.color,
+                            rotation: Angle(radians: overlay.rotation.radians),
+                            fontName: overlay.fontName
+                        )
+                    }
+                    
+                    let legacyDrawingPaths = renderingService.drawingPaths.map { path -> DrawingPath in
+                        return DrawingPath(
+                            id: path.id,
+                            color: path.color,
+                            lineWidth: path.lineWidth,
+                            points: path.points
+                        )
+                    }
+                    
+                    // Process video with overlays
+                    print("🎬 Processing video with \(renderingService.textOverlays.count) text overlays and \(renderingService.drawingPaths.count) drawings")
+                    let processedVideoURL = try await mediaProcessor.processVideoWithOverlays(
+                        videoURL: videoURL,
+                        textOverlays: legacyTextOverlays,
+                        drawingPaths: legacyDrawingPaths,
+                        progressHandler: { [weak self] (progress: Float) in
+                            DispatchQueue.main.async {
+                                self?.processingProgress = progress
+                                if self?.showErrorMessage == true {
+                                    self?.errorMessage = "Processing video: \(Int(progress * 100))%"
+                                }
+                            }
+                        }
+                    )
+                    
+                    // Hide the processing message
+                    showErrorMessage = false
+                    
+                    // Upload the processed video
+                    success = await storiesViewModel.createVideoStory(
+                        videoURL: processedVideoURL,
+                        caption: caption.isEmpty ? nil : caption,
+                        location: location,
+                        locationName: locationName
+                    )
+                } else {
+                    // Upload the original video if no overlays
+                    success = await storiesViewModel.createVideoStory(
+                        videoURL: videoURL,
+                        caption: caption.isEmpty ? nil : caption,
+                        location: location,
+                        locationName: locationName
+                    )
+                }
+            }
+            
+            // Reset state after successful upload
+            if success {
+                resetState()
+            }
+            
+        } catch {
+            print("❌ Error processing or uploading story: \(error)")
+            errorMessage = "Failed to process or upload story: \(error.localizedDescription)"
+            showErrorMessage = true
+            success = false
         }
         
         isLoading = false
-        
-        if !success {
-            showErrorMessage = true
-            errorMessage = "Failed to upload story"
-        }
-        
         return success
-    }
-    
-    private func renderOverlaysToImage(_ image: UIImage) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: image.size)
-        
-        return renderer.image { context in
-            // Draw the base image with current scale and offset
-            let rect = CGRect(origin: .zero, size: image.size)
-            image.draw(in: rect)
-            
-            let ctx = context.cgContext
-            
-            // Calculate scale factor between UIKit coordinate system and image size
-            let scaleFactorX = image.size.width / UIScreen.main.bounds.width
-            let scaleFactorY = image.size.height / UIScreen.main.bounds.height
-            
-            // Draw all paths
-            for path in drawingPaths {
-                if path.points.count < 2 { continue }
-                
-                ctx.setStrokeColor(UIColor(path.color).cgColor)
-                ctx.setLineWidth(path.lineWidth * scaleFactorX)
-                ctx.setLineCap(.round)
-                ctx.setLineJoin(.round)
-                
-                for (i, point) in path.points.enumerated() {
-                    let scaledPoint = CGPoint(
-                        x: point.x * scaleFactorX,
-                        y: point.y * scaleFactorY
-                    )
-                    
-                    if i == 0 {
-                        ctx.move(to: scaledPoint)
-                    } else {
-                        ctx.addLine(to: scaledPoint)
-                    }
-                }
-                
-                ctx.strokePath()
-            }
-            
-            // Draw all text overlays
-            for overlay in textOverlays {
-                let scaledPosition = CGPoint(
-                    x: overlay.position.x * scaleFactorX,
-                    y: overlay.position.y * scaleFactorY
-                )
-                
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: overlay.fontSize * scaleFactorX),
-                    .foregroundColor: UIColor(overlay.color)
-                ]
-                
-                let attributedString = NSAttributedString(string: overlay.text, attributes: attributes)
-                let textSize = attributedString.size()
-                
-                ctx.saveGState()
-                ctx.translateBy(x: scaledPosition.x, y: scaledPosition.y)
-                ctx.rotate(by: overlay.rotation)
-                
-                attributedString.draw(at: CGPoint(x: -textSize.width / 2, y: -textSize.height / 2))
-                
-                ctx.restoreGState()
-            }
-        }
     }
     
     private func resetState() {
@@ -445,7 +626,7 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         textOverlays = []
         currentImageScale = 1.0
         currentImageOffset = .zero
-        selectedTextOverlay = nil
+        _selectedTextOverlay = nil
         
         // Reset drawing state
         drawingPaths = []
@@ -469,7 +650,7 @@ class StoryCreationViewModel: NSObject, ObservableObject {
     
     // Add a method to change font for selected text
     func updateTextFont(fontName: String, fontSize: CGFloat? = nil) {
-        guard let selectedId = selectedTextOverlay,
+        guard let selectedId = _selectedTextOverlay,
               let index = textOverlays.firstIndex(where: { $0.id == selectedId }) else {
             print("No text selected to update font")
             return
@@ -495,22 +676,46 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         // This prevents the editing mode from changing unexpectedly
         shouldKeepEditing = true
         
-        // Use a small buffer to ensure media references are established
+        // CRITICAL FIX: Don't nest asyncAfter calls that could reset state
+        // Process immediately, then schedule only needed validations
+        
+        // Ensure text editing mode persists if needed
+        if case .text = self.editingMode, self.textOverlays.isEmpty {
+            // Create a text overlay if none exists
+            self.addTextOverlay()
+        } else if case .text = self.editingMode, self._selectedTextOverlay == nil, !self.textOverlays.isEmpty {
+            // Select the first text overlay if none is selected
+            self._selectedTextOverlay = self.textOverlays.first?.id
+        }
+        
+        print("Maintaining editing mode: \(self.editingMode)")
+        
+        // CRITICAL FIX: Use multiple timed validation checks to ensure state persistence
+        // This creates a cascading series of checks that help prevent state loss
+        
+        // First check - almost immediate (0.1s)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // Ensure text editing mode persists if needed
-            if self.editingMode == .text && self.textOverlays.isEmpty {
-                // Create a text overlay if none exists
-                self.addTextOverlay()
-            } else if self.editingMode == .text && self.selectedTextOverlay == nil && !self.textOverlays.isEmpty {
-                // Select the first text overlay if none is selected
-                self.selectedTextOverlay = self.textOverlays.first?.id
+            if self.shouldKeepEditing {
+                self.validateOverlayState()
             }
-            
-            print("Maintaining editing mode: \(self.editingMode)")
-            
-            // Reset after a delay to allow state to settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.animateToolTransition()
+        }
+        
+        // Second check - medium delay (0.5s)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.shouldKeepEditing {
+                self.validateOverlayState()
+            }
+        }
+        
+        // Third check - longer delay (1.5s)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Only validate state - do NOT trigger more animations or state changes
+            if self.shouldKeepEditing {
+                // Print current state for debugging
+                print("📋 Current overlay state - Text overlays: \(self.textOverlays.count), Drawing paths: \(self.drawingPaths.count), Editing mode: \(self.editingMode)")
+                
+                // Re-validate state to ensure persistence
+                self.validateOverlayState()
             }
         }
     }
@@ -613,6 +818,88 @@ class StoryCreationViewModel: NSObject, ObservableObject {
         videoCache = nil
         print("🗑️ StoryCreationViewModel: All media references cleared")
     }
+    
+    // CRITICAL ADDITION: Create a safe method to change editing mode that prevents unwanted transitions
+    func setEditingMode(_ newMode: EditingMode, force: Bool = false) {
+        // Skip if no change needed
+        if newMode == editingMode { return }
+        
+        // Check if transition is allowed (unless forced)
+        if !force && !editingMode.canTransitionTo(newMode) {
+            print("🛑 Blocked unsafe transition from \(editingMode) to \(newMode)")
+            return
+        }
+        
+        print("✅ Mode transition: \(editingMode) -> \(newMode)")
+        
+        // Process based on new mode
+        switch newMode {
+        case .text(let overlayId):
+            let targetId = overlayId ?? textOverlays.first?.id
+            
+            // Create text overlay if needed
+            if textOverlays.isEmpty {
+                addTextOverlay()
+                return // addTextOverlay will set the mode appropriately
+            } else if let targetId = targetId {
+                // We have overlays and a target ID
+                _selectedTextOverlay = targetId
+                editingMode = .text(overlayId: targetId)
+            } else {
+                // We have overlays but no specific target, select the first one
+                _selectedTextOverlay = textOverlays.first?.id
+                editingMode = .text(overlayId: textOverlays.first?.id)
+            }
+            
+        case .draw:
+            // Simply set the mode, drawing creation happens on touch
+            editingMode = .draw
+            
+        case .stickers:
+            editingMode = .stickers
+            
+        case .transform:
+            // Only get here if transition was allowed
+            editingMode = .transform
+        }
+        
+        // Ensure shouldKeepEditing is set appropriately
+        if case .transform = newMode {
+            shouldKeepEditing = false
+        } else {
+            shouldKeepEditing = true
+        }
+        
+        // Force immediate state persistence to prevent issues
+        forceStatePersistence()
+    }
+    
+    // Create a computed property that wraps _selectedTextOverlay
+    var selectedTextOverlay: UUID? {
+        get {
+            // First check editing mode for the most accurate value
+            if case .text(let overlayId) = editingMode, let overlayId = overlayId {
+                return overlayId
+            }
+            // Fall back to the published property if not in text mode
+            return _selectedTextOverlay
+        }
+        set {
+            // Update both the backing property and potentially the editing mode
+            _selectedTextOverlay = newValue
+            // Note: No need to update editingMode here as the didSet on _selectedTextOverlay handles it
+        }
+    }
+    
+    // Helper method for internal editing mode changes that won't trigger recursion
+    private func _internalSetEditingMode(_ newMode: EditingMode) {
+        editingMode = newMode
+    }
+    
+    // New method to force state persistence
+    func forceStatePersistence() {
+        stateManager?.enforceStateConsistency()
+    }
 }
 
 // MARK: - AVCapturePhotoCaptureDelegate
@@ -676,20 +963,101 @@ extension StoryCreationViewModel: AVCaptureFileOutputRecordingDelegate {
     }
 }
 
-// Define models for text overlays and drawing paths
-struct TextOverlay: Identifiable {
-    var id: UUID
-    var text: String
-    var position: CGPoint
-    var fontSize: CGFloat
-    var color: Color
-    var rotation: CGFloat
-    var fontName: String = "System" // Default font name
-}
-
-struct DrawingPath: Identifiable {
-    var id: UUID
-    var color: Color
-    var lineWidth: CGFloat
-    var points: [CGPoint]
+// Add a dedicated overlay state manager to prevent any state loss
+@MainActor
+class OverlayStateManager {
+    private var timer: Timer?
+    private weak var viewModel: StoryCreationViewModel?
+    private var isActive = true
+    
+    init(viewModel: StoryCreationViewModel) {
+        self.viewModel = viewModel
+        startPersistenceTimer()
+    }
+    
+    private func startPersistenceTimer() {
+        // Create a timer that runs on the main thread but handles actor isolation correctly
+        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            // Capture self weakly to avoid retain cycles
+            guard let self else { return }
+            
+            // Use Task with MainActor to properly handle actor isolation
+            Task { @MainActor in
+                // Now we're explicitly on the main actor so we can safely access isolated properties
+                guard self.isActive, let _ = self.viewModel else { return }
+                self.enforceStateConsistency()
+            }
+        }
+    }
+    
+    func enforceStateConsistency() {
+        guard let viewModel = viewModel else { return }
+        
+        // Forcefully maintain text editing mode if that's what we're supposed to be in
+        if case .text = viewModel.editingMode {
+            // Make sure shouldKeepEditing stays true
+            viewModel.shouldKeepEditing = true
+            
+            // Get the selected overlay ID
+            var overlayId: UUID? = nil
+            if case .text(let id) = viewModel.editingMode {
+                overlayId = id
+            }
+            
+            // If we have text overlays but no selected overlay, select one
+            if !viewModel.textOverlays.isEmpty && overlayId == nil {
+                overlayId = viewModel.textOverlays.first?.id
+                // Force reset the editing mode with this ID
+                if let id = overlayId {
+                    viewModel._selectedTextOverlay = id
+                }
+            }
+            
+            // If we have no text overlays but are in text mode, create one
+            if viewModel.textOverlays.isEmpty {
+                // Don't call the regular method as it might have state issues
+                // Instead directly modify the arrays
+                let newId = UUID()
+                let newOverlay = TextOverlay(
+                    id: newId,
+                    text: "Tap to edit",
+                    position: CGPoint(x: UIScreen.main.bounds.width / 2, y: UIScreen.main.bounds.height / 2),
+                    fontSize: viewModel.selectedFontSize,
+                    color: .white,
+                    rotation: .zero,
+                    fontName: viewModel.selectedFontName
+                )
+                viewModel.textOverlays.append(newOverlay)
+                viewModel._selectedTextOverlay = newId
+            }
+            
+            // Force synchronize the selected overlay with editing mode
+            if case .text(let activeId) = viewModel.editingMode, 
+               let activeId = activeId,
+               viewModel._selectedTextOverlay != activeId {
+                viewModel._selectedTextOverlay = activeId
+            }
+        }
+        
+        // Similarly for drawing mode
+        if case .draw = viewModel.editingMode {
+            viewModel.shouldKeepEditing = true
+        }
+        
+        // For any non-transform mode, always keep editing
+        if case .transform = viewModel.editingMode {
+            // Transform mode is allowed to not be editing
+        } else {
+            viewModel.shouldKeepEditing = true
+        }
+    }
+    
+    func setActive(_ active: Bool) {
+        isActive = active
+    }
+    
+    deinit {
+        timer?.invalidate()
+        timer = nil
+    }
 } 

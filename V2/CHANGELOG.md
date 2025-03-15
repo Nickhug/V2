@@ -390,4 +390,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved user feedback for camera access permissions and setup errors
   - [REF:V2/Views/Feed/StoryCreationView.swift, V2/Views/Feed/CameraComponents.swift]
 
+# Version 1.0.33 (2025-04-15)
+
+## [FIX] Fixed issue with text and drawing overlays disappearing in StoryCreationView
+- Enhanced state preservation in the StoryCreationViewModel with the new validateOverlayState method
+- Improved the maintainEditingMode method to ensure overlay state persists
+- Added additional verification steps to catch and recover from state losses
+- Added extra logging to help track overlay state changes
+- Referenced files: V2/ViewModels/StoryCreationViewModel.swift
+
+# Version 1.0.32 (2025-04-12)
+
+## [FIX] Swift 3 Naming Conventions for AVFoundation
+- Updated obsolete `videoCompositionWithAsset` method call to modern Swift 3 naming convention `videoComposition(with:)`
+- Fixed compiler warning about renamed Swift 3 API in AVMutableVideoComposition
+- Ensured code uses the latest AVFoundation API naming patterns
+- [REF:V2/Services/MediaProcessorService.swift]
+
+# Version 1.0.31 (2025-04-10)
+
+## [FIX] Video Composition API Fixes
+- Fixed completion handler in videoCompositionWithAsset to properly handle composition and error parameters
+- Added proper error handling for video composition creation failures
+- Fixed optional unwrapping issue with AVMutableVideoComposition
+- Added new MediaProcessingError case for video composition creation failures
+- Enhanced error handling throughout video processing pipeline
+- [REF:V2/Services/MediaProcessorService.swift]
+
+# Version 1.0.30 (2025-04-08)
+
+## [FIX] Complete iOS 18 AVFoundation Compatibility
+- Made MediaProcessorService conform to Swift's Sendable protocol for better concurrency safety
+- Updated to the latest iOS 18 AVAssetExportSession API with `export(to:as:)` method
+- Fixed deprecated `videoCompositionWithAsset` API with modern completion handler pattern
+- Fixed memory management and captured variables in closures for thread safety
+- Eliminated non-sendable type captures in sendable closures
+- Added proper guard statements for self references in video composition
+- Marked the class as `@unchecked Sendable` to ensure compatibility
+- Applied the latest Apple recommendations for AVFoundation in iOS 18
+- Technical Decision: Used withCheckedThrowingContinuation to properly bridge callback-based APIs
+- [REF:V2/Services/MediaProcessorService.swift]
+
+# Version 1.0.29 (2025-04-06)
+
+## [FIX] Final iOS 18 AVFoundation API Compatibility
+- Fixed remaining iOS 18 compatibility issues in MediaProcessorService.swift
+- Replaced deprecated `videoCompositionWithAsset` with new initializer syntax
+- Fixed memory management in video composition handler with proper weak self references
+- Updated AVAssetExportSession progress handling with correct API usage
+- Replaced deprecated `export()` with properly wrapped `exportAsynchronously` and continuation
+- Eliminated unused `try` and `await` expressions that caused compiler warnings
+- Handled proper memory management to avoid potential retain cycles in video processing
+- [REF:V2/Services/MediaProcessorService.swift]
+
+# Version 1.0.28 (2025-04-05)
+
+## [FIX] Corrected AVFoundation iOS 18 APIs Implementation
+- Fixed compilation errors in MediaProcessorService.swift related to AVAssetExportSession APIs
+- Used proper instance-based `exportSession.states(updateInterval:)` method instead of static method
+- Fixed export session initialization and configuration to use existing APIs
+- Corrected `videoCompositionWithAsset` method call syntax by removing extraneous parameter label
+- Removed unused code in StoryCreationView that was generating compiler warnings
+- [REF:V2/Services/MediaProcessorService.swift]
+
+# Version 1.0.27 (2025-04-03)
+
+## [FIX] AVFoundation Deprecated APIs in iOS 18
+- Updated MediaProcessorService to use new AVFoundation APIs for iOS 18 compatibility
+- Replaced `AVAsset(url:)` with `AVURLAsset(url:)` for creating media assets
+- Updated track loading to use async `loadTracks(withMediaType:)` instead of deprecated `tracks(withMediaType:)`
+- Migrated to async property loading with `load(.duration)` and `load(.preferredTransform)`
+- Replaced deprecated AVAssetExportSession methods with new async export APIs
+- Removed deprecated `videoComposition(asset:applyingCIFiltersWithHandler:)` with new async version
+- Enhanced code with proper Swift concurrency using modern async/await patterns
+- Technical Decision: Followed Apple's recommendations to migrate to async APIs that support structured concurrency
+- Reference: V2/Services/MediaProcessorService.swift
+
+# Version 1.0.26 (2025-04-02)
+
+## [FIX] Video Playback Aspect Ratio
 // ... existing code ... 
